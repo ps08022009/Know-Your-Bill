@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Congressional Bill Browser</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="logo">Know Your Bill</div>
+</nav>
+
+<div class="search-container">
+    <div class="search-box">
+        <h2 class="search-title">Find Bills</h2>
+        <div class="search-input-wrapper">
+            <input type="text" id="searchInput" placeholder="Search for bills (e.g., 'climate change', 'healthcare reform', 'infrastructure')">
+        </div>
+        
+        <div class="categories">
+            <h3 class="categories-title">Popular Categories</h3>
+            <div class="category-grid">
+                <button class="category-btn" onclick="searchCategory('healthcare')">Healthcare</button>
+                <button class="category-btn" onclick="searchCategory('climate change')">Climate & Environment</button>
+                <button class="category-btn" onclick="searchCategory('education')">Education</button>
+                <button class="category-btn" onclick="searchCategory('immigration')">Immigration</button>
+                <button class="category-btn" onclick="searchCategory('infrastructure')">Infrastructure</button>
+                <button class="category-btn" onclick="searchCategory('tax reform')">Tax & Budget</button>
+                <button class="category-btn" onclick="searchCategory('national security')">National Security</button>
+                <button class="category-btn" onclick="searchCategory('technology')">Technology</button>
+                <button class="category-btn" onclick="searchCategory('agriculture')">Agriculture</button>
+                <button class="category-btn" onclick="searchCategory('veterans')">Veterans Affairs</button>
+                <button class="category-btn" onclick="searchCategory('housing')">Housing</button>
+                <button class="category-btn" onclick="searchCategory('criminal justice')">Criminal Justice</button>
+            </div>
+        </div>
+        
+        <button class="btn" onclick="searchBills()" id="searchBtn">Search</button>
+        <p class="help-text">Enter a topic or keyword to find relevant congressional bills. AI will search and summarize the latest legislation.</p>
+        <div id="errorContainer"></div>
+    </div>
+
+    <div id="billsContainer"></div>
+</div>
+
+<script src="script.js">
+</script>
+
+</body>
+</html>
