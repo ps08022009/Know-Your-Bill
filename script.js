@@ -1,649 +1,1252 @@
-// Configuration - update this to your Flask backend URL
-const BACKEND_URL = 'http://localhost:5000';
+// Complete BillFinder JS (chat + quiz + auth fallback)
+// Put this in a <script> tag at the end of your HTML or load as a separate file after DOM loads.
 
-// Global variables
+// CONFIG
+const BACKEND_URL = 'http://localhost:5000'; // change to your Flask URL if different
+
+// GLOBALS
 let currentUser = null;
 let savedBills = JSON.parse(localStorage.getItem('savedBills') || '[]');
-let userSettings = JSON.parse(localStorage.getItem('userSettings') || '{"ageGroup": "adult", "autoSave": false, "detailLevel": "detailed"}');
+let userSettings = JSON.parse(localStorage.getItem('userSettings') || '{"ageGroup":"adult","autoSave":false,"detailLevel":"detailed"}');
 let currentChatBill = null;
 let currentQuiz = null;
 let currentQuestionIndex = 0;
 let quizScore = 0;
+let currentQuery = '';
+let currentPage = 1;
+let hasMoreBills = false;
+let isLoading = false;
+let allLoadedBills = [];
+let modelsReady = false;
 
+// ------------------ AUTH & TABS ------------------
 function switchTab(tab) {
-    const signinForm = document.getElementById('signinForm');
-    const signupForm = document.getElementById('signupForm');
-    const tabBtns = document.querySelectorAll('.tab-btn');
-
-    tabBtns.forEach(btn => btn.classList.remove('active'));
-
-    if (tab === 'signin') {
-        signinForm.classList.add('active');
-        signupForm.classList.remove('active');
-        document.querySelector('.tab-btn:first-child').classList.add('active');
-    } else {
-        signupForm.classList.add('active');
-        signinForm.classList.remove('active');
-        document.querySelector('.tab-btn:last-child').classList.add('active');
-    }
-
-    clearAuthError();
+  const signinForm = document.getElementById('signinForm');
+  const signupForm = document.getElementById('signupForm');
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn => btn.classList.remove('active'));
+  if (tab === 'signin') {
+    signinForm && signinForm.classList.add('active');
+    signupForm && signupForm.classList.remove('active');
+    if (tabBtns[0]) tabBtns[0].classList.add('active');
+  } else {
+    signupForm && signupForm.classList.add('active');
+    signinForm && signinForm.classList.remove('active');
+    if (tabBtns[tabBtns.length - 1]) tabBtns[tabBtns.length - 1].classList.add('active');
+  }
+  clearAuthError();
 }
 
 async function signIn() {
-    const email = document.getElementById('signinEmail').value.trim();
-    const password = document.getElementById('signinPassword').value;
-    const btn = document.getElementById('signinBtn');
+  const email = (document.getElementById('signinEmail') || {}).value?.trim() || '';
+  const password = (document.getElementById('signinPassword') || {}).value || '';
+  const btn = document.getElementById('signinBtn');
+  if (!email || !password) { showAuthError('Please fill in all fields'); return; }
 
-    if (!email || !password) {
-        showAuthError('Please fill in all fields');
-        return;
-    }
+  // If Firebase not setup, fallback to demo login
+  if (!window.firebaseAuth || !window.signInWithEmailAndPassword) {
+    demoLogin();
+    return;
+  }
 
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Signing in...</span>';
+  btn && (btn.disabled = true);
+  btn && (btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Signing in...</span>');
 
-    try {
-        await window.signInWithEmailAndPassword(window.firebaseAuth, email, password);
-        clearAuthError();
-    } catch (error) {
-        showAuthError(getAuthErrorMessage(error.code));
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i><span>Sign In</span>';
-    }
+  try {
+    await window.signInWithEmailAndPassword(window.firebaseAuth, email, password);
+    clearAuthError();
+  } catch (error) {
+    console.error('Sign in error:', error);
+    showAuthError(getAuthErrorMessage(error.code));
+  } finally {
+    btn && (btn.disabled = false);
+    btn && (btn.innerHTML = '<i class="fas fa-sign-in-alt"></i><span>Sign In</span>');
+  }
 }
 
 async function signUp() {
-    const name = document.getElementById('signupName').value.trim();
-    const email = document.getElementById('signupEmail').value.trim();
-    const password = document.getElementById('signupPassword').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
-    const btn = document.getElementById('signupBtn');
+  const name = (document.getElementById('signupName') || {}).value?.trim() || '';
+  const email = (document.getElementById('signupEmail') || {}).value?.trim() || '';
+  const password = (document.getElementById('signupPassword') || {}).value || '';
+  const confirmPassword = (document.getElementById('confirmPassword') || {}).value || '';
+  const btn = document.getElementById('signupBtn');
 
-    if (!name || !email || !password || !confirmPassword) {
-        showAuthError('Please fill in all fields');
-        return;
-    }
+  if (!name || !email || !password || !confirmPassword) { showAuthError('Please fill in all fields'); return; }
+  if (password !== confirmPassword) { showAuthError('Passwords do not match'); return; }
+  if (password.length < 6) { showAuthError('Password must be at least 6 characters'); return; }
 
-    if (password !== confirmPassword) {
-        showAuthError('Passwords do not match');
-        return;
-    }
+  if (!window.firebaseAuth || !window.createUserWithEmailAndPassword) {
+    showAuthError('Signup requires Firebase. Use demo login or load Firebase SDK.');
+    return;
+  }
 
-    if (password.length < 6) {
-        showAuthError('Password must be at least 6 characters');
-        return;
-    }
+  btn && (btn.disabled = true);
+  btn && (btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Creating account...</span>');
 
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Creating account...</span>';
-
-    try {
-        const userCredential = await window.createUserWithEmailAndPassword(window.firebaseAuth, email, password);
-        await window.updateProfile(userCredential.user, { displayName: name });
-        clearAuthError();
-    } catch (error) {
-        showAuthError(getAuthErrorMessage(error.code));
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-user-plus"></i><span>Create Account</span>';
-    }
+  try {
+    const userCredential = await window.createUserWithEmailAndPassword(window.firebaseAuth, email, password);
+    if (window.updateProfile) await window.updateProfile(userCredential.user, { displayName: name });
+    clearAuthError();
+  } catch (error) {
+    console.error('Sign up error:', error);
+    showAuthError(getAuthErrorMessage(error.code));
+  } finally {
+    btn && (btn.disabled = false);
+    btn && (btn.innerHTML = '<i class="fas fa-user-plus"></i><span>Create Account</span>');
+  }
 }
 
 async function signInWithGoogle() {
-    try {
-        await window.signInWithPopup(window.firebaseAuth, window.googleProvider);
-        clearAuthError();
-    } catch (error) {
-        showAuthError(getAuthErrorMessage(error.code));
-    }
+  if (!window.firebaseAuth || !window.signInWithPopup || !window.googleProvider) {
+    showAuthError('Authentication system is loading. Please try again in a moment.');
+    return;
+  }
+  try {
+    await window.signInWithPopup(window.firebaseAuth, window.googleProvider);
+    clearAuthError();
+  } catch (error) {
+    console.error('Google sign in error:', error);
+    showAuthError(getAuthErrorMessage(error.code));
+  }
 }
 
 async function signOut() {
-    try {
-        await window.firebaseSignOut(window.firebaseAuth);
-        hideDropdown();
-    } catch (error) {
-        console.error('Sign out error:', error);
-    }
+  try {
+    if (window.firebaseAuth && window.firebaseSignOut) await window.firebaseSignOut(window.firebaseAuth);
+    hideDropdown();
+    currentUser = null;
+    showLoginScreen();
+  } catch (error) { console.error('Sign out error:', error); }
 }
 
 async function resetPassword() {
-    const email = document.getElementById('signinEmail').value.trim();
-
-    if (!email) {
-        showAuthError('Please enter your email address first');
-        return;
-    }
-
-    try {
-        await window.sendPasswordResetEmail(window.firebaseAuth, email);
-        showAuthError('Password reset email sent! Check your inbox.', 'success');
-    } catch (error) {
-        showAuthError(getAuthErrorMessage(error.code));
-    }
+  const email = (document.getElementById('signinEmail') || {}).value?.trim() || '';
+  if (!email) { showAuthError('Please enter your email address first'); return; }
+  if (!window.firebaseAuth || !window.sendPasswordResetEmail) { showAuthError('Password reset requires Firebase.'); return; }
+  try {
+    await window.sendPasswordResetEmail(window.firebaseAuth, email);
+    showAuthError('Password reset email sent! Check your inbox.', 'success');
+  } catch (error) {
+    console.error('Reset password error:', error);
+    showAuthError(getAuthErrorMessage(error.code));
+  }
 }
 
+// ------------------ UI HELPERS ------------------
 function showAuthError(message, type = 'error') {
-    const errorDiv = document.getElementById('authError');
-    errorDiv.textContent = message;
-    errorDiv.className = `auth-error show ${type}`;
-
-    if (type === 'success') {
-        errorDiv.style.background = 'linear-gradient(135deg, #f0fff4, #c6f6d5)';
-        errorDiv.style.borderColor = '#68d391';
-        errorDiv.style.color = '#2f855a';
-    }
-}
-
-function clearAuthError() {
-    const errorDiv = document.getElementById('authError');
-    errorDiv.classList.remove('show');
+  const errorDiv = document.getElementById('authError');
+  if (!errorDiv) return;
+  errorDiv.textContent = message;
+  errorDiv.className = `auth-error show ${type}`;
+  if (type === 'success') {
+    errorDiv.style.background = 'linear-gradient(135deg, #f0fff4, #c6f6d5)';
+    errorDiv.style.borderColor = '#68d391';
+    errorDiv.style.color = '#2f855a';
+  } else {
     errorDiv.style.background = '';
     errorDiv.style.borderColor = '';
     errorDiv.style.color = '';
+  }
+}
+
+function clearAuthError() {
+  const errorDiv = document.getElementById('authError');
+  if (!errorDiv) return;
+  errorDiv.classList.remove('show');
+  errorDiv.style.background = '';
+  errorDiv.style.borderColor = '';
+  errorDiv.style.color = '';
+  errorDiv.textContent = '';
 }
 
 function getAuthErrorMessage(errorCode) {
-    switch (errorCode) {
-        case 'auth/user-not-found':
-            return 'No account found with this email address';
-        case 'auth/wrong-password':
-            return 'Incorrect password';
-        case 'auth/email-already-in-use':
-            return 'An account with this email already exists';
-        case 'auth/weak-password':
-            return 'Password is too weak';
-        case 'auth/invalid-email':
-            return 'Invalid email address';
-        case 'auth/too-many-requests':
-            return 'Too many failed attempts. Please try again later';
-        case 'auth/popup-closed-by-user':
-            return 'Sign-in popup was closed';
-        default:
-            return 'An error occurred. Please try again';
-    }
+  switch (errorCode) {
+    case 'auth/user-not-found': return 'No account found with this email address';
+    case 'auth/wrong-password': return 'Incorrect password';
+    case 'auth/email-already-in-use': return 'An account with this email already exists';
+    case 'auth/weak-password': return 'Password is too weak';
+    case 'auth/invalid-email': return 'Invalid email address';
+    case 'auth/too-many-requests': return 'Too many failed attempts. Please try again later';
+    case 'auth/popup-closed-by-user': return 'Sign-in popup was closed';
+    default: return 'An error occurred. Please try again';
+  }
 }
 
 function showLoginScreen() {
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('loadingScreen').style.display = 'none';
-    document.getElementById('mainApp').style.display = 'none';
+  const login = document.getElementById('loginScreen');
+  const loading = document.getElementById('loadingScreen');
+  const main = document.getElementById('mainApp');
+  if (login) login.style.display = 'flex';
+  if (loading) loading.style.display = 'none';
+  if (main) main.style.display = 'none';
+}
+
+function demoLogin() {
+  const demoUser = { displayName: 'Demo User', email: 'demo@billfinder.ai', photoURL: null, uid: 'demo-user-123' };
+  currentUser = demoUser;
+  showMainApp(demoUser);
 }
 
 function showMainApp(user) {
-    currentUser = user;
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('loadingScreen').style.display = 'flex';
-
-    // Update user info in navbar
-    updateUserInfo(user);
-
-    // Start loading models
-    checkModelsReady();
+  currentUser = user;
+  const login = document.getElementById('loginScreen');
+  const loading = document.getElementById('loadingScreen');
+  const main = document.getElementById('mainApp');
+  if (login) login.style.display = 'none';
+  if (loading) loading.style.display = 'flex';
+  if (main) main.style.display = 'none';
+  updateUserInfo(user);
+  checkModelsReady();
 }
 
 function updateUserInfo(user) {
-    const userName = document.getElementById('userName');
-    const userAvatar = document.getElementById('userAvatar');
-
-    if (userName) {
-        userName.textContent = user.displayName || user.email.split('@')[0];
-    }
-
-    if (userAvatar) {
-        userAvatar.src = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email)}&background=667eea&color=fff`;
-    }
+  const userName = document.getElementById('userName');
+  const userAvatar = document.getElementById('userAvatar');
+  if (userName) userName.textContent = user.displayName || (user.email || '').split('@')[0];
+  if (userAvatar) userAvatar.src = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email || 'User')}&background=667eea&color=fff`;
 }
 
 function toggleDropdown() {
-    const dropdown = document.getElementById('dropdownMenu');
-    const userInfo = document.getElementById('userInfo');
-
-    dropdown.classList.toggle('show');
-    userInfo.classList.toggle('active');
+  const dropdown = document.getElementById('dropdownMenu');
+  const userInfo = document.getElementById('userInfo');
+  dropdown && dropdown.classList.toggle('show');
+  userInfo && userInfo.classList.toggle('active');
 }
-
 function hideDropdown() {
-    const dropdown = document.getElementById('dropdownMenu');
-    const userInfo = document.getElementById('userInfo');
-
-    dropdown.classList.remove('show');
-    userInfo.classList.remove('active');
+  const dropdown = document.getElementById('dropdownMenu');
+  const userInfo = document.getElementById('userInfo');
+  dropdown && dropdown.classList.remove('show');
+  userInfo && userInfo.classList.remove('active');
 }
+function showProfile() { hideDropdown(); alert('Profile feature coming soon!'); }
+function showSavedBills() { hideDropdown(); displaySavedBills(); }
+function showSettings() { hideDropdown(); openSettings(); }
 
-// Menu functions
-function showProfile() {
-    hideDropdown();
-    alert('Profile feature coming soon!');
-}
-
-function showSavedBills() {
-    hideDropdown();
-    displaySavedBills();
-}
-
-function showSettings() {
-    hideDropdown();
-    openSettings();
-}
-
-// Settings functions
+// ------------------ SETTINGS ------------------
 function openSettings() {
-    const modal = document.getElementById('settingsModal');
-    const ageGroup = document.getElementById('ageGroup');
-    const autoSave = document.getElementById('autoSave');
-    const detailLevel = document.getElementById('detailLevel');
-    
-    // Load current settings
-    ageGroup.value = userSettings.ageGroup;
-    autoSave.checked = userSettings.autoSave;
-    detailLevel.value = userSettings.detailLevel;
-    
-    modal.style.display = 'flex';
+  const modal = document.getElementById('settingsModal');
+  const ageGroup = document.getElementById('ageGroup');
+  const autoSave = document.getElementById('autoSave');
+  const detailLevel = document.getElementById('detailLevel');
+  if (ageGroup) ageGroup.value = userSettings.ageGroup || 'adult';
+  if (autoSave) autoSave.checked = !!userSettings.autoSave;
+  if (detailLevel) detailLevel.value = userSettings.detailLevel || 'detailed';
+  if (modal) modal.style.display = 'flex';
 }
-
-function closeSettings() {
-    document.getElementById('settingsModal').style.display = 'none';
-}
-
+function closeSettings() { const modal = document.getElementById('settingsModal'); if (modal) modal.style.display = 'none'; }
 function saveSettings() {
-    const ageGroup = document.getElementById('ageGroup').value;
-    const autoSave = document.getElementById('autoSave').checked;
-    const detailLevel = document.getElementById('detailLevel').value;
-    
-    userSettings = { ageGroup, autoSave, detailLevel };
-    localStorage.setItem('userSettings', JSON.stringify(userSettings));
+  const ageGroup = (document.getElementById('ageGroup') || {}).value || 'adult';
+  const autoSave = !!(document.getElementById('autoSave') || {}).checked;
+  const detailLevel = (document.getElementById('detailLevel') || {}).value || 'detailed';
+  userSettings = { ageGroup, autoSave, detailLevel };
+  localStorage.setItem('userSettings', JSON.stringify(userSettings));
+  closeSettings();
+  showNotification('Settings saved', 'success');
 }
 
-// Saved bills functions
+// ------------------ SAVED BILLS ------------------
 function saveBill(bill) {
-    const billId = bill.number;
-    
-    // Check if already saved
-    if (savedBills.find(b => b.number === billId)) {
-        showNotification('Bill already saved!', 'info');
-        return;
-    }
-    
-    savedBills.push({
-        ...bill,
-        savedAt: new Date().toISOString()
-    });
-    
-    localStorage.setItem('savedBills', JSON.stringify(savedBills));
-    showNotification('Bill saved successfully!', 'success');
-    
-    // Update save button
-    updateSaveButton(billId, true);
+  const billId = bill.number;
+  if (savedBills.find(b => b.number === billId)) { showNotification('Bill already saved!', 'info'); return; }
+  savedBills.push({ ...bill, savedAt: new Date().toISOString() });
+  localStorage.setItem('savedBills', JSON.stringify(savedBills));
+  showNotification('Bill saved successfully!', 'success');
+  updateSaveButton(billId, true);
 }
-
 function removeSavedBill(billNumber) {
-    savedBills = savedBills.filter(b => b.number !== billNumber);
-    localStorage.setItem('savedBills', JSON.stringify(savedBills));
-    showNotification('Bill removed from saved list', 'info');
-    updateSaveButton(billNumber, false);
+  savedBills = savedBills.filter(b => b.number !== billNumber);
+  localStorage.setItem('savedBills', JSON.stringify(savedBills));
+  showNotification('Bill removed from saved list', 'info');
+  updateSaveButton(billNumber, false);
 }
-
 function updateSaveButton(billNumber, isSaved) {
-    const saveBtn = document.querySelector(`[data-bill="${billNumber}"] .save-btn`);
-    if (saveBtn) {
-        if (isSaved) {
-            saveBtn.innerHTML = '<i class="fas fa-bookmark"></i> Saved';
-            saveBtn.classList.add('saved');
-        } else {
-            saveBtn.innerHTML = '<i class="far fa-bookmark"></i> Save';
-            saveBtn.classList.remove('saved');
-        }
-    }
+  const saveBtn = document.querySelector(`[data-bill="${billNumber}"] .save-btn`);
+  if (!saveBtn) return;
+  if (isSaved) {
+    saveBtn.innerHTML = '<i class="fas fa-bookmark"></i> Saved';
+    saveBtn.classList.add('saved');
+  } else {
+    saveBtn.innerHTML = '<i class="far fa-bookmark"></i> Save';
+    saveBtn.classList.remove('saved');
+  }
 }
-
 function displaySavedBills() {
-    const billsContainer = document.getElementById('billsContainer');
-    
-    if (savedBills.length === 0) {
-        billsContainer.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">📚</div>
-                <h3>No Saved Bills</h3>
-                <p>Bills you save will appear here for easy access</p>
-            </div>
-        `;
-        return;
-    }
-    
-    const resultsHeader = `
-        <div class="results-header">
-            <h2><i class="fas fa-bookmark"></i> Your Saved Bills (${savedBills.length})</h2>
-            <p>Bills you've bookmarked for later reference</p>
-        </div>
-    `;
-    
-    const billsHTML = savedBills.map((bill, index) => {
-        return createBillCardHTML(bill, index, true);
-    }).join('');
-    
-    billsContainer.innerHTML = resultsHeader + `<div class="bills-grid">${billsHTML}</div>`;
+  const billsContainer = document.getElementById('billsContainer');
+  if (!billsContainer) return;
+  if (savedBills.length === 0) {
+    billsContainer.innerHTML = `
+      <div class="empty-state"><div class="empty-state-icon">📚</div><h3>No Saved Bills</h3><p>Bills you save will appear here for easy access</p></div>`;
+    return;
+  }
+  const header = `<div class="results-header"><h2><i class="fas fa-bookmark"></i> Your Saved Bills (${savedBills.length})</h2><p>Bills you've bookmarked for later reference</p></div>`;
+  const billsHTML = savedBills.map((bill, index) => createBillCardHTML(bill, index, true)).join('');
+  billsContainer.innerHTML = header + `<div class="bills-grid">${billsHTML}</div>`;
 }
 
+// ------------------ NOTIFICATIONS ------------------
 function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.innerHTML = `
-        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-        <span>${message}</span>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    // Animate in
-    setTimeout(() => notification.classList.add('show'), 100);
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => document.body.removeChild(notification), 300);
-    }, 3000);
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+  notification.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i><span>${message}</span>`;
+  document.body.appendChild(notification);
+  setTimeout(() => notification.classList.add('show'), 100);
+  setTimeout(() => { notification.classList.remove('show'); setTimeout(() => { try { document.body.removeChild(notification); } catch (e) { } }, 300); }, 3000);
 }
 
-// Loading screen management
-let loadingProgress = 0;
-let modelsReady = false;
+// ------------------ LOADING / MODELS ------------------
+function updateProgress(percent, text) {
+  const progressBar = document.getElementById('loadingProgress');
+  const loadingText = document.getElementById('loadingText');
+  if (progressBar) progressBar.style.width = `${percent}%`;
+  if (loadingText) loadingText.textContent = text;
+}
+function updateLoadingStep(stepElement, status) { if (!stepElement) return; stepElement.className = `step ${status}`; }
 
 async function checkModelsReady() {
-    const loadingScreen = document.getElementById('loadingScreen');
-    const mainApp = document.getElementById('mainApp');
-    const progressBar = document.getElementById('loadingProgress');
-    const loadingText = document.getElementById('loadingText');
-    const step1 = document.getElementById('step1');
-    const step2 = document.getElementById('step2');
-    const step3 = document.getElementById('step3');
+  const loadingScreen = document.getElementById('loadingScreen');
+  const mainApp = document.getElementById('mainApp');
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const step3 = document.getElementById('step3');
 
-    // Simulate loading steps
+  try {
     updateLoadingStep(step1, 'active');
-    updateProgress(20, 'Connecting to server...');
+    updateProgress(30, 'Connecting to server...');
+    await new Promise(r => setTimeout(r, 200));
+    updateProgress(60, 'Checking AI models...');
+    updateLoadingStep(step1, 'completed');
+    updateLoadingStep(step2, 'active');
 
-    try {
-        // Check if server is running
-        await new Promise(resolve => setTimeout(resolve, 500));
-        updateProgress(40, 'Loading semantic model...');
-        updateLoadingStep(step1, 'completed');
-        updateLoadingStep(step2, 'active');
+    const response = await fetch(`${BACKEND_URL}/models_ready`);
+    if (!response.ok) throw new Error('Models not ready');
 
-        await new Promise(resolve => setTimeout(resolve, 800));
-        updateProgress(70, 'Loading summarization model...');
+    updateProgress(85, 'Models ready!');
+    updateLoadingStep(step2, 'completed');
+    updateLoadingStep(step3, 'active');
+    await new Promise(r => setTimeout(r, 200));
+    updateProgress(100, 'Launching BillFinder AI...');
+    updateLoadingStep(step3, 'completed');
+    await new Promise(r => setTimeout(r, 300));
 
-        // Check if models are ready
-        const response = await fetch(`${BACKEND_URL}/models_ready`);
-
-        if (response.ok) {
-            updateProgress(90, 'Models ready!');
-            updateLoadingStep(step2, 'completed');
-            updateLoadingStep(step3, 'active');
-
-            await new Promise(resolve => setTimeout(resolve, 500));
-            updateProgress(100, 'Launching BillFinder AI...');
-            updateLoadingStep(step3, 'completed');
-
-            await new Promise(resolve => setTimeout(resolve, 800));
-
-            // Hide loading screen and show main app
-            loadingScreen.classList.add('fade-out');
-            setTimeout(() => {
-                loadingScreen.style.display = 'none';
-                mainApp.style.display = 'block';
-                initializeMainApp();
-            }, 500);
-
-        } else {
-            throw new Error('Models not ready');
-        }
-
-    } catch (error) {
-        console.log('Server not ready, retrying...', error);
-        updateProgress(10, 'Server starting up...');
-        // Retry after 2 seconds
-        setTimeout(checkModelsReady, 2000);
-    }
+    if (loadingScreen) loadingScreen.classList.add('fade-out');
+    setTimeout(() => {
+      if (loadingScreen) loadingScreen.style.display = 'none';
+      if (mainApp) mainApp.style.display = 'block';
+      initializeMainApp();
+    }, 300);
+  } catch (error) {
+    console.log('Server not ready, retrying...', error);
+    updateProgress(10, 'Server starting up...');
+    setTimeout(checkModelsReady, 1000);
+  }
 }
 
-function updateProgress(percent, text) {
-    const progressBar = document.getElementById('loadingProgress');
-    const loadingText = document.getElementById('loadingText');
-
-    progressBar.style.width = `${percent}%`;
-    loadingText.textContent = text;
-}
-
-function updateLoadingStep(stepElement, status) {
-    stepElement.className = `step ${status}`;
-}
-
+// ------------------ INITIALIZE MAIN APP ------------------
 function initializeMainApp() {
-    // Update user info in the existing navbar
-    updateUserInfo(currentUser);
+  updateUserInfo(currentUser);
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) searchInput.addEventListener('keypress', function (e) { if (e.key === 'Enter') searchBills(); });
 
-    // Re-attach event listeners
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                searchBills();
-            }
-        });
-    }
+  const billsContainer = document.getElementById('billsContainer');
+  if (billsContainer && !billsContainer.innerHTML.trim()) {
+    billsContainer.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🏛️</div><h3>Discover Congressional Bills</h3><p>Enter a topic above to find and browse recent congressional legislation with AI-generated summaries and semantic matching</p></div>`;
+  }
 
-    // Initialize empty state if needed
-    const billsContainer = document.getElementById('billsContainer');
-    if (billsContainer && !billsContainer.innerHTML.trim()) {
-        billsContainer.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">🏛️</div>
-                <h3>Discover Congressional Bills</h3>
-                <p>Enter a topic above to find and browse recent congressional legislation with AI-generated summaries and semantic matching</p>
-            </div>
-        `;
-    }
+  const quizBtn = document.getElementById('quizBtn'); if (quizBtn) quizBtn.onclick = generateQuiz;
+  const quizClose = document.getElementById('quizClose'); if (quizClose) quizClose.onclick = closeQuiz;
+  const chatInput = document.getElementById('chatInput'); if (chatInput) chatInput.addEventListener('keypress', handleChatKeypress);
 }
 
+// ------------------ UTIL ------------------
 function parseDate(dateStr) {
-    if (!dateStr || dateStr === 'N/A') {
-        return new Date(0);
+  if (!dateStr || dateStr === 'N/A') return new Date(0);
+  const formats = [/(\d{1,2})\/(\d{1,2})\/(\d{4})/, /(\d{4})-(\d{1,2})-(\d{1,2})/];
+  for (let format of formats) {
+    const match = dateStr.match(format);
+    if (match) {
+      if (format === formats[0]) return new Date(match[3], match[1] - 1, match[2]);
+      else return new Date(match[1], match[2] - 1, match[3]);
     }
-
-    const formats = [
-        /(\d{1,2})\/(\d{1,2})\/(\d{4})/,
-        /(\d{4})-(\d{1,2})-(\d{1,2})/,
-    ];
-
-    for (let format of formats) {
-        const match = dateStr.match(format);
-        if (match) {
-            if (format === formats[0]) {
-                return new Date(match[3], match[1] - 1, match[2]);
-            } else {
-                return new Date(match[1], match[2] - 1, match[3]);
-            }
-        }
-    }
-
-    const yearMatch = dateStr.match(/(\d{4})/);
-    if (yearMatch) {
-        return new Date(yearMatch[1], 0, 1);
-    }
-
-    return new Date(0);
-}
-
-async function searchBills() {
-    const query = document.getElementById('searchInput').value.trim();
-    const billsContainer = document.getElementById('billsContainer');
-    const errorContainer = document.getElementById('errorContainer');
-    const searchBtn = document.getElementById('searchBtn');
-
-    errorContainer.innerHTML = '';
-
-    if (!query) {
-        errorContainer.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i> Please enter a search term</div>';
-        return;
-    }
-
-    searchBtn.disabled = true;
-    const originalContent = searchBtn.innerHTML;
-    searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Searching...</span>';
-
-    billsContainer.innerHTML = '<div class="loading"><div class="spinner"></div><div>🤖 AI is analyzing 250+ bills and generating smart summaries...</div></div>';
-
-    try {
-        const response = await fetch(`${BACKEND_URL}/search_bills`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                query: query
-            })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (!data.bills || data.bills.length === 0) {
-            throw new Error('No relevant bills found. Try a different search term or broader keywords.');
-        }
-
-        // Transform backend data to match original format
-        const bills = data.bills.map(bill => ({
-            number: `H.R. ${bill.number}`,
-            title: bill.title,
-            sponsor: bill.sponsor || 'N/A',
-            status: bill.status || 'N/A',
-            date: bill.date || 'N/A',
-            summary: bill.summary,
-            relevance: bill.relevance_score || 0,
-            url: bill.url,
-            dateObj: parseDate(bill.date)
-        }));
-
-        displayBills(bills, query);
-        updateNavStats(bills.length);
-
-    } catch (error) {
-        billsContainer.innerHTML = '';
-        errorContainer.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-circle"></i> ${error.message}</div>`;
-    } finally {
-        searchBtn.disabled = false;
-        searchBtn.innerHTML = originalContent;
-    }
-}
-
-function searchCategory(category) {
-    document.getElementById('searchInput').value = category;
-    searchBills();
-}
-
-function displayBills(bills, query) {
-    const billsContainer = document.getElementById('billsContainer');
-
-    const resultsHeader = `
-        <div class="results-header">
-            <h2><i class="fas fa-search"></i> Found ${bills.length} bills for "${escapeHtml(query)}"</h2>
-            <p>Results sorted by AI relevance score</p>
-        </div>
-    `;
-
-    const billsHTML = bills.map((bill, index) => {
-        const relevancePercent = Math.round(bill.relevance * 100);
-        const relevanceColor = relevancePercent > 70 ? '#51cf66' : relevancePercent > 50 ? '#ffd43b' : '#ff6b6b';
-
-        return `
-        <div class="bill-card" style="animation-delay: ${index * 0.1}s">
-            <div class="relevance-badge" style="background-color: ${relevanceColor}">
-                ${relevancePercent}%
-            </div>
-            <div class="bill-header">
-                <div class="bill-number">${escapeHtml(bill.number)}</div>
-                <div class="bill-title">${escapeHtml(bill.title)}</div>
-            </div>
-            <div class="bill-summary">${escapeHtml(bill.summary)}</div>
-            <div class="bill-meta">
-                <div class="meta-item">
-                    <span><i class="fas fa-clipboard-list"></i></span>
-                    <span>${escapeHtml(bill.status)}</span>
-                </div>
-                <div class="meta-item">
-                    <span><i class="fas fa-user-tie"></i></span>
-                    <span>${escapeHtml(bill.sponsor)}</span>
-                </div>
-                <div class="meta-item">
-                    <span><i class="fas fa-calendar-alt"></i></span>
-                    <span>${escapeHtml(bill.date)}</span>
-                </div>
-            </div>
-            ${bill.url ? `
-            <div class="bill-actions">
-                <a href="${bill.url}" target="_blank" class="view-bill-btn">
-                    <i class="fas fa-external-link-alt"></i>
-                    View Full Bill
-                </a>
-            </div>
-            ` : ''}
-        </div>
-    `}).join('');
-
-    billsContainer.innerHTML = resultsHeader + `<div class="bills-grid">${billsHTML}</div>`;
+  }
+  const yearMatch = dateStr.match(/(\d{4})/);
+  if (yearMatch) return new Date(yearMatch[1], 0, 1);
+  return new Date(0);
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  if (text === undefined || text === null) return '';
+  const div = document.createElement('div'); div.textContent = String(text); return div.innerHTML;
 }
 
-function updateNavStats(billCount) {
-    const navStats = document.getElementById('navStats');
-    if (navStats && billCount) {
-        navStats.innerHTML = `
-            <span class="stat-item">
-                <i class="fas fa-check-circle"></i>
-                <span>${billCount} Results</span>
-            </span>
-            <span class="stat-item">
-                <i class="fas fa-robot"></i>
-                <span>AI Powered</span>
-            </span>
-        `;
+// ------------------ SEARCH / BILLS ------------------
+async function searchBills(loadMore = false) {
+  const query = (document.getElementById('searchInput') || {}).value?.trim() || '';
+  const billsContainer = document.getElementById('billsContainer');
+  const errorContainer = document.getElementById('errorContainer');
+  const searchBtn = document.getElementById('searchBtn');
+
+  if (!loadMore) {
+    errorContainer && (errorContainer.innerHTML = '');
+    currentPage = 1; allLoadedBills = []; currentQuery = query;
+  }
+
+  if (!query) {
+    if (errorContainer) errorContainer.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i> Please enter a search term</div>';
+    return;
+  }
+
+  if (isLoading) return;
+  isLoading = true;
+
+  if (!loadMore) { searchBtn && (searchBtn.disabled = true); if (billsContainer) billsContainer.innerHTML = '<div class="loading"><div class="spinner"></div><div>🚀 AI is quickly finding the most relevant bills...</div></div>'; }
+  else { const loadMoreBtn = document.getElementById('loadMoreBtn'); if (loadMoreBtn) { loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading more...'; loadMoreBtn.disabled = true; } }
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/search_bills`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, page: currentPage, per_page: 5 })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API error: ${response.status}`);
     }
+
+    const data = await response.json();
+    if (!data.bills || data.bills.length === 0) {
+      if (!loadMore) throw new Error('No relevant bills found. Try a different search term or broader keywords.');
+      return;
+    }
+
+    const bills = data.bills.map(bill => ({
+      number: bill.number ? `H.R. ${bill.number}` : 'Unknown',
+      title: bill.title || 'No title',
+      sponsor: bill.sponsor || 'N/A',
+      status: bill.status || 'N/A',
+      date: bill.date || 'N/A',
+      summary: bill.summary || '',
+      relevance: bill.relevance_score || 0,
+      url: bill.url || '',
+      dateObj: parseDate(bill.date)
+    }));
+
+    allLoadedBills = loadMore ? [...allLoadedBills, ...bills] : bills;
+    hasMoreBills = !!data.has_more;
+    currentPage++;
+
+    displayBills(allLoadedBills, query, data.total_found);
+    updateNavStats(allLoadedBills.length, data.total_found);
+  } catch (error) {
+    console.error('Search error:', error);
+    if (!loadMore) {
+      billsContainer && (billsContainer.innerHTML = '');
+      errorContainer && (errorContainer.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-circle"></i> ${escapeHtml(error.message)}</div>`);
+    } else {
+      showNotification('Failed to load more bills', 'error');
+    }
+  } finally {
+    isLoading = false;
+    if (!loadMore) { searchBtn && (searchBtn.disabled = false); if (searchBtn) searchBtn.innerHTML = '<i class="fas fa-search"></i><span>Search</span>'; }
+    else { const loadMoreBtn = document.getElementById('loadMoreBtn'); if (loadMoreBtn) { loadMoreBtn.innerHTML = '<i class="fas fa-plus"></i> Load More Bills'; loadMoreBtn.disabled = false; } }
+  }
 }
 
-// Close dropdown when clicking outside
+function loadMoreBills() { if (hasMoreBills && !isLoading) searchBills(true); }
+function searchCategory(category) { const input = document.getElementById('searchInput'); if (input) input.value = category; searchBills(); }
+
+function displayBills(bills, query, totalFound = null) {
+  const billsContainer = document.getElementById('billsContainer');
+  if (!billsContainer) return;
+  const showingText = totalFound && totalFound > bills.length ? `Showing ${bills.length} of ${totalFound} bills` : `Found ${bills.length} bills`;
+  const resultsHeader = `<div class="results-header"><h2><i class="fas fa-search"></i> ${showingText} for "${escapeHtml(query)}"</h2><p>Results sorted by date (newest first) and relevance • Click any bill to chat with AI about it</p></div>`;
+  const billsHTML = bills.map((bill, index) => createBillCardHTML(bill, index, false)).join('');
+  const loadMoreButton = hasMoreBills ? `<div class="load-more-container"><button class="load-more-btn" id="loadMoreBtn" onclick="loadMoreBills()"><i class="fas fa-plus"></i> Load More Bills</button><p class="load-more-text">Loading 5 bills at a time for faster performance</p></div>` : '';
+  billsContainer.innerHTML = resultsHeader + `<div class="bills-grid">${billsHTML}</div>` + loadMoreButton;
+
+  if (userSettings.autoSave) bills.forEach(b => { if (b.relevance > 0.7) saveBill(b); });
+}
+
+function createBillCardHTML(bill, index, isSavedView = false) {
+  const relevancePercent = Math.round((bill.relevance || 0) * 100);
+  const relevanceColor = relevancePercent > 70 ? '#51cf66' : relevancePercent > 50 ? '#ffd43b' : '#ff6b6b';
+  const isSaved = savedBills.find(b => b.number === bill.number);
+  const personalizedScore = bill.personalized_score ? Math.round(bill.personalized_score * 100) : null;
+
+  return `
+    <div class="bill-card enhanced" style="animation-delay: ${index * 0.1}s" data-bill="${escapeHtml(bill.number || '')}">
+      <div class="relevance-badge" style="background-color: ${relevanceColor}">${relevancePercent}%</div>
+      ${personalizedScore ? `<div class="personalized-badge">📍 ${personalizedScore}% match</div>` : ''}
+      
+      <div class="bill-header">
+        <div class="bill-number">${escapeHtml(bill.number)}</div>
+        <div class="bill-title">${escapeHtml(bill.title)}</div>
+      </div>
+      
+      <div class="bill-summary">${escapeHtml(bill.summary)}</div>
+      
+      <div class="bill-meta">
+        <div class="meta-item"><span><i class="fas fa-clipboard-list"></i></span><span class="bill-status" data-bill="${escapeHtml(bill.number)}">${escapeHtml(bill.status)}</span></div>
+        <div class="meta-item"><span><i class="fas fa-user-tie"></i></span><span class="bill-sponsor" data-bill="${escapeHtml(bill.number)}">${escapeHtml(bill.sponsor)}</span></div>
+        <div class="meta-item"><span><i class="fas fa-calendar-alt"></i></span><span class="bill-date" data-bill="${escapeHtml(bill.number)}">${escapeHtml(bill.date)}</span></div>
+      </div>
+      
+      <div class="enhanced-features">
+        <button class="feature-btn complexity-btn" onclick="event.stopPropagation(); showComplexityAnalysis('${escapeHtml(bill.number)}')">
+          <i class="fas fa-chart-bar"></i> Reading Level
+        </button>
+        <button class="feature-btn timeline-btn" onclick="event.stopPropagation(); showBillTimeline('${escapeHtml(bill.number)}')">
+          <i class="fas fa-history"></i> Timeline
+        </button>
+        <button class="feature-btn impact-btn" onclick="event.stopPropagation(); showImpactCalculator('${escapeHtml(bill.number)}')">
+          <i class="fas fa-users"></i> Impact
+        </button>
+        <button class="feature-btn heatmap-btn" onclick="event.stopPropagation(); showVotingHeatmap('${escapeHtml(bill.number)}')">
+          <i class="fas fa-map"></i> Voting
+        </button>
+      </div>
+      
+      <div class="bill-actions">
+        <button class="view-bill-btn" ${isSaved ? 'saved' : ''}" onclick="event.stopPropagation(); ${isSaved ? `removeSavedBill('${escapeHtml(bill.number)}')` : `saveBill(${JSON.stringify(bill).replace(/"/g, '&quot;')})`}"><i class="fas fa-bookmark"></i>${isSaved ? 'Saved' : 'Save'}</button>
+        ${bill.url ? `<a href="${escapeHtml(bill.url)}" target="_blank" class="view-bill-btn" onclick="event.stopPropagation()"><i class="fas fa-external-link-alt"></i> View Full</a>` : ''}
+        ${isSavedView ? `<button class="view-bill-btn" onclick="event.stopPropagation(); removeSavedBill('${escapeHtml(bill.number)}')"><i class="fas fa-trash"></i> Remove</button>` : ''}
+      </div>
+    </div>`;
+}
+
+// ------------------ CHAT ------------------
+function openBillChat(billNumber, billTitle) {
+  currentChatBill = billNumber;
+  const chatInterface = document.getElementById('chatInterface');
+  const chatBillTitle = document.getElementById('chatBillTitle');
+  const chatMessages = document.getElementById('chatMessages');
+  if (chatBillTitle) chatBillTitle.textContent = `Chat about ${billNumber}`;
+  if (chatInterface) chatInterface.style.display = 'flex';
+  if (chatMessages) chatMessages.innerHTML = `<div class="ai-message"><div class="message-avatar"><i class="fas fa-robot"></i></div><div class="message-content"><p>Hi! I'm here to help you understand <strong>${escapeHtml(billNumber)}</strong>. Ask me anything about it, or click the Quiz button for a quick knowledge test!</p></div></div>`;
+  loadBillDetails(billNumber);
+}
+
+function closeBillChat() { const chatInterface = document.getElementById('chatInterface'); if (chatInterface) chatInterface.style.display = 'none'; currentChatBill = null; }
+
+async function loadBillDetails(billNumber) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/get_bill_details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_number: (billNumber || '').replace('H.R. ', '') })
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    const details = data.details || {};
+    const billCard = document.querySelector(`[data-bill="${billNumber}"]`);
+    if (billCard) {
+      const statusEl = billCard.querySelector('.bill-status');
+      const sponsorEl = billCard.querySelector('.bill-sponsor');
+      const dateEl = billCard.querySelector('.bill-date');
+      if (statusEl && details.status) statusEl.textContent = details.status;
+      if (sponsorEl && details.sponsor) sponsorEl.textContent = details.sponsor;
+      if (dateEl && details.date) dateEl.textContent = details.date;
+    }
+  } catch (error) { console.error('Error loading bill details:', error); }
+}
+
+function handleChatKeypress(event) { if (event.key === 'Enter') sendChatMessage(); }
+
+async function sendChatMessage() {
+  const chatInput = document.getElementById('chatInput');
+  const message = (chatInput || {}).value?.trim() || '';
+  if (!message || !currentChatBill) return;
+  addChatMessage(message, 'user');
+  if (chatInput) chatInput.value = '';
+  const typingId = addTypingIndicator();
+  try {
+    const response = await fetch(`${BACKEND_URL}/chat_with_bill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_number: currentChatBill.replace('H.R. ', ''), message, age_group: userSettings.ageGroup })
+    });
+    if (!response.ok) throw new Error('Failed to get AI response');
+    const data = await response.json();
+    removeTypingIndicator(typingId);
+    addChatMessage(data.response || 'No answer', 'ai');
+  } catch (error) {
+    removeTypingIndicator(typingId);
+    addChatMessage('Sorry, I encountered an error. Please try again.', 'ai');
+  }
+}
+
+function addChatMessage(message, sender) {
+  const chatMessages = document.getElementById('chatMessages');
+  if (!chatMessages) return;
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `${sender}-message`;
+  if (sender === 'ai') {
+    messageDiv.innerHTML = `<div class="message-avatar"><i class="fas fa-robot"></i></div><div class="message-content"><p>${escapeHtml(message)}</p></div>`;
+  } else {
+    messageDiv.innerHTML = `<div class="message-content"><p>${escapeHtml(message)}</p></div><div class="message-avatar"><i class="fas fa-user"></i></div>`;
+  }
+  chatMessages.appendChild(messageDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addTypingIndicator() {
+  const chatMessages = document.getElementById('chatMessages');
+  if (!chatMessages) return null;
+  const typingDiv = document.createElement('div');
+  const typingId = 'typing-' + Date.now();
+  typingDiv.id = typingId;
+  typingDiv.className = 'ai-message typing';
+  typingDiv.innerHTML = `<div class="message-avatar"><i class="fas fa-robot"></i></div><div class="message-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
+  chatMessages.appendChild(typingDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return typingId;
+}
+
+function removeTypingIndicator(typingId) { const typingDiv = document.getElementById(typingId); if (typingDiv) typingDiv.remove(); }
+
+// ------------------ QUIZ ------------------
+async function generateQuiz() {
+  if (!currentChatBill) { showNotification('Open a bill chat first to generate a quiz', 'info'); return; }
+  const quizBtn = document.getElementById('quizBtn');
+  if (quizBtn) { quizBtn.disabled = true; quizBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...'; }
+  try {
+    const response = await fetch(`${BACKEND_URL}/generate_quiz`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_number: currentChatBill.replace('H.R. ', ''), age_group: userSettings.ageGroup })
+    });
+    if (!response.ok) throw new Error('Failed to generate quiz');
+    const data = await response.json();
+    currentQuiz = data.quiz || [];
+    currentQuestionIndex = 0;
+    quizScore = 0;
+    if (currentQuiz.length === 0) { showNotification('No quiz available for this bill', 'info'); return; }
+    openQuizModal(); displayQuestion();
+  } catch (error) {
+    console.error('Quiz generation error:', error);
+    showNotification('Failed to generate quiz. Please try again.', 'error');
+  } finally {
+    if (quizBtn) { quizBtn.disabled = false; quizBtn.innerHTML = '<i class="fas fa-question-circle"></i> Quiz'; }
+  }
+}
+
+function openQuizModal() {
+  const modal = document.getElementById('quizModal'); const container = document.getElementById('quizContainer'); const results = document.getElementById('quizResults');
+  if (modal) modal.style.display = 'flex'; if (container) container.style.display = 'block'; if (results) results.style.display = 'none';
+}
+function closeQuiz() { const modal = document.getElementById('quizModal'); if (modal) modal.style.display = 'none'; currentQuiz = null; }
+function displayQuestion() {
+  if (!currentQuiz || currentQuestionIndex >= currentQuiz.length) return;
+  const question = currentQuiz[currentQuestionIndex];
+  const progress = ((currentQuestionIndex + 1) / currentQuiz.length) * 100;
+  const progressBar = document.getElementById('quizProgress'); const progressText = document.getElementById('progressText');
+  const qEl = document.getElementById('quizQuestion'); const explanation = document.getElementById('quizExplanation');
+  const nextBtn = document.getElementById('nextBtn'); const finishBtn = document.getElementById('finishBtn');
+  const optionsContainer = document.getElementById('quizOptions');
+  if (progressBar) progressBar.style.width = `${progress}%`; if (progressText) progressText.textContent = `Question ${currentQuestionIndex + 1} of ${currentQuiz.length}`;
+  if (qEl) qEl.textContent = question.question || 'No question text'; if (explanation) explanation.style.display = 'none';
+  if (nextBtn) nextBtn.style.display = 'none'; if (finishBtn) finishBtn.style.display = 'none';
+  if (optionsContainer) optionsContainer.innerHTML = (question.options || []).map((option, index) => `<button class="quiz-option" onclick="selectAnswer(${index})">${escapeHtml(option)}</button>`).join('');
+}
+
+function selectAnswer(selectedIndex) {
+  if (!currentQuiz) return;
+  const question = currentQuiz[currentQuestionIndex];
+  const options = document.querySelectorAll('.quiz-option');
+  options.forEach((option, index) => { option.disabled = true; option.classList.remove('correct', 'incorrect'); if (index === question.correct) option.classList.add('correct'); else if (index === selectedIndex && index !== question.correct) option.classList.add('incorrect'); });
+  if (selectedIndex === question.correct) quizScore++;
+  const explanationDiv = document.getElementById('quizExplanation');
+  if (explanationDiv) { explanationDiv.innerHTML = `<div class="explanation-content"><h4>${selectedIndex === question.correct ? '✅ Correct!' : '❌ Incorrect'}</h4><p>${escapeHtml(question.explanation || '')}</p></div>`; explanationDiv.style.display = 'block'; }
+  if (currentQuestionIndex < currentQuiz.length - 1) { const nextBtn = document.getElementById('nextBtn'); if (nextBtn) nextBtn.style.display = 'block'; }
+  else { const finishBtn = document.getElementById('finishBtn'); if (finishBtn) finishBtn.style.display = 'block'; }
+}
+
+function nextQuestion() { currentQuestionIndex++; displayQuestion(); }
+function finishQuiz() {
+  if (!currentQuiz) return;
+  const percentage = Math.round((quizScore / currentQuiz.length) * 100);
+  const resultContainer = document.getElementById('quizContainer'); const results = document.getElementById('quizResults');
+  const scorePercentage = document.getElementById('scorePercentage'); const scoreMessage = document.getElementById('scoreMessage');
+  if (resultContainer) resultContainer.style.display = 'none'; if (results) results.style.display = 'block'; if (scorePercentage) scorePercentage.textContent = `${percentage}%`;
+  let message = '';
+  if (percentage >= 80) message = 'Excellent! You really understand this bill!';
+  else if (percentage >= 60) message = 'Good job! You have a solid grasp of the key points.';
+  else if (percentage >= 40) message = 'Not bad! Consider reviewing the bill details.';
+  else message = 'Keep learning! Try chatting with the AI to understand better.';
+  if (scoreMessage) scoreMessage.textContent = message;
+}
+function retakeQuiz() { currentQuestionIndex = 0; quizScore = 0; openQuizModal(); displayQuestion(); }
+
+// ------------------ GLOBAL EVENT HANDLERS ------------------
 document.addEventListener('click', function (event) {
-    const userMenu = document.querySelector('.user-menu');
-    if (userMenu && !userMenu.contains(event.target)) {
-        hideDropdown();
-    }
+  const userMenu = document.querySelector('.user-menu');
+  if (userMenu && !userMenu.contains(event.target)) hideDropdown();
+  const settingsModal = document.getElementById('settingsModal');
+  const quizModal = document.getElementById('quizModal');
+  if (event.target === settingsModal) closeSettings();
+  if (event.target === quizModal) closeQuiz();
 });
 
-// Add Enter key support for forms
 document.addEventListener('keypress', function (e) {
-    if (e.key === 'Enter') {
-        const activeForm = document.querySelector('.auth-form.active');
-        if (activeForm) {
-            if (activeForm.id === 'signinForm') {
-                signIn();
-            } else if (activeForm.id === 'signupForm') {
-                signUp();
-            }
-        }
+  if (e.key === 'Enter') {
+    const activeForm = document.querySelector('.auth-form.active');
+    if (activeForm) {
+      if (activeForm.id === 'signinForm') signIn();
+      else if (activeForm.id === 'signupForm') signUp();
     }
+  }
 });
 
-// Start the authentication flow when page loads
+// ------------------ NAV STATS (fix for your previous error) ------------------
+function updateNavStats(billCount, totalFound = null) {
+  const navStats = document.getElementById('navStats');
+  if (!navStats) return;
+  const displayText = (totalFound && totalFound > billCount) ? `${billCount}/${totalFound} Results` : `${billCount} Results`;
+  navStats.innerHTML = `
+    <span class="stat-item"><i class="fas fa-check-circle"></i><span>${escapeHtml(displayText)}</span></span>
+    <span class="stat-item"><i class="fas fa-zap"></i><span>Fast Load</span></span>
+  `;
+}
+
+// ------------------ STARTUP ------------------
 document.addEventListener('DOMContentLoaded', function () {
-    // Firebase auth state will be handled by the onAuthStateChanged listener in the HTML
+  showLoginScreen();
+  setTimeout(() => {
+    if (!window.firebaseAuth) {
+      console.log('Firebase not loaded, showing login screen (demo available)');
+      showLoginScreen();
+    }
+  }, 2000);
+
+  const demoBtn = document.getElementById('demoBtn'); if (demoBtn) demoBtn.onclick = demoLogin;
 });
+
+// ------------------ ENHANCED FEATURES ------------------
+
+// Complexity Analysis
+async function showComplexityAnalysis(billNumber) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/analyze_complexity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_number: billNumber.replace('H.R. ', '') })
+    });
+
+    if (!response.ok) throw new Error('Failed to analyze complexity');
+
+    const data = await response.json();
+    displayComplexityModal(data);
+  } catch (error) {
+    console.error('Complexity analysis error:', error);
+    showNotification('Failed to analyze reading complexity', 'error');
+  }
+}
+
+function displayComplexityModal(data) {
+  const modal = createModal('complexity-modal', 'Reading Level Analysis');
+  const complexity = data.complexity_analysis;
+  const overall = data.overall_complexity;
+
+  const content = `
+    <div class="complexity-analysis">
+      <div class="overall-score">
+        <h3>Overall Reading Level: ${overall.reading_level}</h3>
+        <div class="score-bar">
+          <div class="score-fill" style="width: ${overall.complexity_score}%; background: ${getComplexityColor(overall.complexity_score)}"></div>
+        </div>
+        <p>Complexity Score: ${overall.complexity_score}/100</p>
+      </div>
+      
+      <div class="section-analysis">
+        <h4>Section Breakdown:</h4>
+        ${Object.entries(complexity).map(([section, analysis]) => `
+          <div class="section-item">
+            <div class="section-header">
+              <span class="section-name">${section.replace('_', ' ').toUpperCase()}</span>
+              <span class="section-level ${analysis.reading_level.toLowerCase().replace(' ', '-')}">${analysis.reading_level}</span>
+            </div>
+            <div class="metrics">
+              <span>Flesch-Kincaid: ${analysis.flesch_kincaid}</span>
+              <span>Reading Ease: ${analysis.flesch_reading_ease}</span>
+              <span>Gunning Fog: ${analysis.gunning_fog}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      
+      <div class="reading-guide">
+        <h4>Reading Level Guide:</h4>
+        <div class="guide-items">
+          <div class="guide-item elementary">Elementary (K-6)</div>
+          <div class="guide-item middle-school">Middle School (7-9)</div>
+          <div class="guide-item high-school">High School (10-12)</div>
+          <div class="guide-item college">College (13-16)</div>
+          <div class="guide-item graduate">Graduate (17+)</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.querySelector('.modal-body').innerHTML = content;
+  document.body.appendChild(modal);
+}
+
+function getComplexityColor(score) {
+  if (score <= 30) return '#51cf66';
+  if (score <= 60) return '#ffd43b';
+  return '#ff6b6b';
+}
+
+// Bill Timeline
+async function showBillTimeline(billNumber) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/bill_progression`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_number: billNumber.replace('H.R. ', '') })
+    });
+
+    if (!response.ok) throw new Error('Failed to get bill timeline');
+
+    const data = await response.json();
+    displayTimelineModal(data);
+  } catch (error) {
+    console.error('Timeline error:', error);
+    showNotification('Failed to load bill timeline', 'error');
+  }
+}
+
+function displayTimelineModal(data) {
+  const modal = createModal('timeline-modal', `Bill ${data.bill_number} Timeline`);
+  const progression = data.progression || [];
+
+  const content = `
+    <div class="bill-timeline">
+      <div class="timeline-header">
+        <h3>Legislative Progress</h3>
+        <p>${progression.length} actions tracked</p>
+      </div>
+      
+      <div class="timeline-container">
+        ${progression.map((item, index) => `
+          <div class="timeline-item ${index === 0 ? 'latest' : ''}">
+            <div class="timeline-marker stage-${item.stage}">
+              <i class="fas fa-${getStageIcon(item.stage)}"></i>
+            </div>
+            <div class="timeline-content">
+              <div class="timeline-date">${formatDate(item.date)}</div>
+              <div class="timeline-status">${item.status}</div>
+              <div class="timeline-description">${item.description}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      
+      <div class="stage-legend">
+        <div class="legend-item"><span class="legend-marker stage-1"></span>Introduced</div>
+        <div class="legend-item"><span class="legend-marker stage-2"></span>Committee</div>
+        <div class="legend-item"><span class="legend-marker stage-3"></span>Floor Vote</div>
+        <div class="legend-item"><span class="legend-marker stage-4"></span>Passed House</div>
+        <div class="legend-item"><span class="legend-marker stage-5"></span>Senate</div>
+        <div class="legend-item"><span class="legend-marker stage-6"></span>Signed/Vetoed</div>
+      </div>
+    </div>
+  `;
+
+  modal.querySelector('.modal-body').innerHTML = content;
+  document.body.appendChild(modal);
+}
+
+function getStageIcon(stage) {
+  const icons = {
+    1: 'file-alt',
+    2: 'users',
+    3: 'gavel',
+    4: 'check',
+    5: 'building',
+    6: 'signature'
+  };
+  return icons[stage] || 'circle';
+}
+
+// Impact Calculator
+async function showImpactCalculator(billNumber) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/impact_calculator`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_number: billNumber.replace('H.R. ', '') })
+    });
+
+    if (!response.ok) throw new Error('Failed to calculate impact');
+
+    const data = await response.json();
+    displayImpactModal(data);
+  } catch (error) {
+    console.error('Impact calculation error:', error);
+    showNotification('Failed to calculate demographic impact', 'error');
+  }
+}
+
+function displayImpactModal(data) {
+  const modal = createModal('impact-modal', 'Demographic Impact Analysis');
+  const impact = data.demographic_impact;
+
+  const content = `
+    <div class="impact-analysis">
+      <div class="impact-header">
+        <h3>Potential Impact on Different Groups</h3>
+        <p>Analysis based on bill content and keywords</p>
+      </div>
+      
+      <div class="impact-grid">
+        ${Object.entries(impact).map(([demographic, analysis]) => `
+          <div class="impact-item ${analysis.level.toLowerCase()}">
+            <div class="impact-icon">${getDemographicIcon(demographic)}</div>
+            <div class="impact-details">
+              <h4>${demographic.replace('_', ' ').toUpperCase()}</h4>
+              <div class="impact-score">
+                <div class="score-bar">
+                  <div class="score-fill" style="width: ${analysis.score}%; background: ${getImpactColor(analysis.level)}"></div>
+                </div>
+                <span class="score-text">${analysis.level} Impact (${analysis.score}%)</span>
+              </div>
+              ${analysis.mentions.length > 0 ? `
+                <div class="mentions">
+                  <strong>Key mentions:</strong> ${analysis.mentions.slice(0, 3).join(', ')}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      
+      <div class="impact-disclaimer">
+        <p><i class="fas fa-info-circle"></i> This analysis is based on keyword frequency and should be used as a starting point for deeper research.</p>
+      </div>
+    </div>
+  `;
+
+  modal.querySelector('.modal-body').innerHTML = content;
+  document.body.appendChild(modal);
+}
+
+function getDemographicIcon(demographic) {
+  const icons = {
+    seniors: '👴',
+    students: '🎓',
+    families: '👨‍👩‍👧‍👦',
+    workers: '👷',
+    veterans: '🎖️',
+    small_business: '🏪',
+    healthcare: '🏥',
+    environment: '🌱',
+    rural: '🚜',
+    urban: '🏙️'
+  };
+  return icons[demographic] || '👥';
+}
+
+function getImpactColor(level) {
+  const colors = {
+    'High': '#ff6b6b',
+    'Medium': '#ffd43b',
+    'Low': '#51cf66'
+  };
+  return colors[level] || '#a0aec0';
+}
+
+// Voting Heatmap
+async function showVotingHeatmap(billNumber) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/voting_heatmap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_number: billNumber.replace('H.R. ', '') })
+    });
+
+    if (!response.ok) throw new Error('Failed to get voting data');
+
+    const data = await response.json();
+    displayHeatmapModal(data);
+  } catch (error) {
+    console.error('Heatmap error:', error);
+    showNotification('Failed to load voting heatmap', 'error');
+  }
+}
+
+function displayHeatmapModal(data) {
+  const modal = createModal('heatmap-modal', 'Voting Patterns by State');
+  const votingData = data.voting_data;
+
+  const content = `
+    <div class="voting-heatmap">
+      <div class="heatmap-header">
+        <h3>State-by-State Support</h3>
+        <p>Voting patterns for ${data.bill_number}</p>
+      </div>
+      
+      <div class="heatmap-legend">
+        <span>Low Support</span>
+        <div class="legend-gradient"></div>
+        <span>High Support</span>
+      </div>
+      
+      <div class="heatmap-grid">
+        ${Object.entries(votingData).map(([state, votes]) => `
+          <div class="state-item" style="background-color: ${getHeatmapColor(votes.support_percentage)}" title="${state}: ${votes.support_percentage}% support">
+            <span class="state-code">${state}</span>
+            <span class="support-percent">${votes.support_percentage}%</span>
+          </div>
+        `).join('')}
+      </div>
+      
+      <div class="voting-summary">
+        <div class="summary-stats">
+          <div class="stat-item">
+            <span class="stat-label">Average Support:</span>
+            <span class="stat-value">${calculateAverageSupport(votingData)}%</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">States Above 60%:</span>
+            <span class="stat-value">${countHighSupport(votingData)}</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="heatmap-disclaimer">
+        <p><i class="fas fa-info-circle"></i> This is sample data for demonstration. Real implementation would use actual congressional voting records.</p>
+      </div>
+    </div>
+  `;
+
+  modal.querySelector('.modal-body').innerHTML = content;
+  document.body.appendChild(modal);
+}
+
+function getHeatmapColor(percentage) {
+  const intensity = percentage / 100;
+  const red = Math.round(255 * (1 - intensity));
+  const green = Math.round(255 * intensity);
+  return `rgb(${red}, ${green}, 100)`;
+}
+
+function calculateAverageSupport(votingData) {
+  const values = Object.values(votingData);
+  const average = values.reduce((sum, vote) => sum + vote.support_percentage, 0) / values.length;
+  return Math.round(average);
+}
+
+function countHighSupport(votingData) {
+  return Object.values(votingData).filter(vote => vote.support_percentage > 60).length;
+}
+
+// Personalized Feed
+async function getPersonalizedFeed() {
+  const userLocation = localStorage.getItem('userLocation') || '';
+  const userInterests = localStorage.getItem('userInterests') || '';
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/personalized_feed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: userLocation,
+        interests: userInterests,
+        query: 'healthcare education climate' // Default broad query
+      })
+    });
+
+    if (!response.ok) throw new Error('Failed to get personalized feed');
+
+    const data = await response.json();
+    displayPersonalizedFeed(data);
+  } catch (error) {
+    console.error('Personalized feed error:', error);
+    showNotification('Failed to load personalized feed', 'error');
+  }
+}
+
+function displayPersonalizedFeed(data) {
+  const billsContainer = document.getElementById('billsContainer');
+  if (!billsContainer) return;
+
+  const header = `
+    <div class="results-header personalized">
+      <h2><i class="fas fa-user-circle"></i> Your Personalized Feed</h2>
+      <p>📍 ${data.location || 'No location set'} • 🎯 Interests: ${data.interests || 'None specified'}</p>
+      <button class="customize-btn" onclick="showPersonalizationSettings()">
+        <i class="fas fa-cog"></i> Customize Preferences
+      </button>
+    </div>
+  `;
+
+  const billsHTML = data.personalized_bills.map((bill, index) => createBillCardHTML(bill, index, false)).join('');
+  billsContainer.innerHTML = header + `<div class="bills-grid">${billsHTML}</div>`;
+}
+
+function showPersonalizationSettings() {
+  const modal = createModal('personalization-modal', 'Customize Your Feed');
+
+  const currentLocation = localStorage.getItem('userLocation') || '';
+  const currentInterests = localStorage.getItem('userInterests') || '';
+
+  const content = `
+    <div class="personalization-form">
+      <div class="form-group">
+        <label for="userLocation">Your Location (State/City):</label>
+        <input type="text" id="userLocation" value="${currentLocation}" placeholder="e.g., California, New York City">
+        <small>Bills affecting your area will be prioritized</small>
+      </div>
+      
+      <div class="form-group">
+        <label for="userInterests">Your Interests (comma-separated):</label>
+        <input type="text" id="userInterests" value="${currentInterests}" placeholder="e.g., healthcare, education, climate change">
+        <small>Bills matching these topics will be highlighted</small>
+      </div>
+      
+      <div class="interest-suggestions">
+        <h4>Popular Topics:</h4>
+        <div class="suggestion-tags">
+          ${['healthcare', 'education', 'climate change', 'immigration', 'infrastructure', 'technology', 'veterans', 'small business'].map(topic =>
+    `<button class="suggestion-tag" onclick="addInterest('${topic}')">${topic}</button>`
+  ).join('')}
+        </div>
+      </div>
+      
+      <div class="form-actions">
+        <button class="save-preferences-btn" onclick="savePersonalizationSettings()">
+          <i class="fas fa-save"></i> Save Preferences
+        </button>
+      </div>
+    </div>
+  `;
+
+  modal.querySelector('.modal-body').innerHTML = content;
+  document.body.appendChild(modal);
+}
+
+function addInterest(interest) {
+  const interestsInput = document.getElementById('userInterests');
+  const currentInterests = interestsInput.value;
+
+  if (!currentInterests.includes(interest)) {
+    const newInterests = currentInterests ? `${currentInterests}, ${interest}` : interest;
+    interestsInput.value = newInterests;
+  }
+}
+
+function savePersonalizationSettings() {
+  const location = document.getElementById('userLocation').value.trim();
+  const interests = document.getElementById('userInterests').value.trim();
+
+  localStorage.setItem('userLocation', location);
+  localStorage.setItem('userInterests', interests);
+
+  // Save to backend if user is logged in
+  if (currentUser) {
+    saveUserProfileToBackend(currentUser.uid, location, interests);
+  }
+
+  closeModal('personalization-modal');
+  showNotification('Preferences saved! Refresh your feed to see personalized results.', 'success');
+}
+
+async function saveUserProfileToBackend(userId, location, interests) {
+  try {
+    await fetch(`${BACKEND_URL}/save_user_profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        location: location,
+        interests: interests,
+        age_group: userSettings.ageGroup || 'adult',
+        income_bracket: 'not_specified'
+      })
+    });
+  } catch (error) {
+    console.error('Error saving profile to backend:', error);
+  }
+}
+
+// Utility Functions
+function createModal(id, title) {
+  // Remove existing modal if present
+  const existing = document.getElementById(id);
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = id;
+  modal.className = 'enhanced-modal';
+  modal.innerHTML = `
+    <div class="modal-overlay" onclick="closeModal('${id}')"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>${title}</h2>
+        <button class="modal-close" onclick="closeModal('${id}')">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body"></div>
+    </div>
+  `;
+
+  return modal;
+}
+
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.add('closing');
+    setTimeout(() => modal.remove(), 300);
+  }
+}
+
+function formatDate(dateStr) {
+  if (!dateStr || dateStr === 'N/A') return 'Unknown date';
+
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch (error) {
+    return dateStr;
+  }
+}
+
+// Add personalized feed button to navigation
+function addPersonalizedFeedButton() {
+  const navStats = document.getElementById('navStats');
+  if (navStats && !document.getElementById('personalizedFeedBtn')) {
+    const feedBtn = document.createElement('button');
+    feedBtn.id = 'personalizedFeedBtn';
+    feedBtn.className = 'personalized-feed-btn';
+    feedBtn.innerHTML = '<i class="fas fa-user-circle"></i> My Feed';
+    feedBtn.onclick = getPersonalizedFeed;
+    navStats.appendChild(feedBtn);
+  }
+}
+
+// Initialize enhanced features when main app loads
+function initializeEnhancedFeatures() {
+  addPersonalizedFeedButton();
+
+  // Load user preferences if available
+  const savedLocation = localStorage.getItem('userLocation');
+  const savedInterests = localStorage.getItem('userInterests');
+
+  if (savedLocation || savedInterests) {
+    console.log('User preferences loaded:', { location: savedLocation, interests: savedInterests });
+  }
+}
+
+// Call initialization when main app is ready
+const originalInitializeMainApp = initializeMainApp;
+initializeMainApp = function () {
+  originalInitializeMainApp();
+  initializeEnhancedFeatures();
+};

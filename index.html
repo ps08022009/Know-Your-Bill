@@ -297,6 +297,56 @@
 
 </div>
 
+<!-- Settings Modal (will be created dynamically) -->
+
+<!-- Chat Interface -->
+<div id="chatInterface" class="modal" style="display: none;">
+    <div class="modal-content chat-modal">
+        <div class="modal-header">
+            <h2 id="chatBillTitle">Chat about Bill</h2>
+            <button class="close-btn" onclick="closeBillChat()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="modal-body">
+            <div id="chatMessages" class="chat-messages">
+                <!-- Messages will be added here -->
+            </div>
+            
+            <div class="chat-input-container">
+                <input type="text" id="chatInput" placeholder="Ask me anything about this bill...">
+                <button onclick="sendChatMessage()" class="chat-send-btn">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+            
+            <button id="quizBtn" class="quiz-btn" onclick="generateQuiz()">
+                <i class="fas fa-question-circle"></i>
+                Generate Quiz
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Quiz Modal -->
+<div id="quizModal" class="modal" style="display: none;">
+    <div class="modal-content quiz-modal">
+        <div class="modal-header">
+            <h2><i class="fas fa-question-circle"></i> Bill Knowledge Quiz</h2>
+            <button class="close-btn" id="quizClose">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="modal-body">
+            <div id="quizContent">
+                <!-- Quiz content will be added here -->
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="script.js"></script>
 <script type="module">
   // Import the functions you need from the SDKs you need
