@@ -1,17 +1,10 @@
-// Complete BillFinder JS (chat + quiz + auth fallback)
-// Put this in a <script> tag at the end of your HTML or load as a separate file after DOM loads.
 
-// CONFIG
-const BACKEND_URL = 'http://localhost:5000'; // change to your Flask URL if different
+const BACKEND_URL = 'http://localhost:5000'; 
 
 // GLOBALS
 let currentUser = null;
 let savedBills = JSON.parse(localStorage.getItem('savedBills') || '[]');
 let userSettings = JSON.parse(localStorage.getItem('userSettings') || '{"ageGroup":"adult","autoSave":false,"detailLevel":"detailed"}');
-let currentChatBill = null;
-let currentQuiz = null;
-let currentQuestionIndex = 0;
-let quizScore = 0;
 let currentQuery = '';
 let currentPage = 1;
 let hasMoreBills = false;
@@ -43,11 +36,6 @@ async function signIn() {
   const btn = document.getElementById('signinBtn');
   if (!email || !password) { showAuthError('Please fill in all fields'); return; }
 
-  // If Firebase not setup, fallback to demo login
-  if (!window.firebaseAuth || !window.signInWithEmailAndPassword) {
-    demoLogin();
-    return;
-  }
 
   btn && (btn.disabled = true);
   btn && (btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Signing in...</span>');
@@ -96,19 +84,7 @@ async function signUp() {
   }
 }
 
-async function signInWithGoogle() {
-  if (!window.firebaseAuth || !window.signInWithPopup || !window.googleProvider) {
-    showAuthError('Authentication system is loading. Please try again in a moment.');
-    return;
-  }
-  try {
-    await window.signInWithPopup(window.firebaseAuth, window.googleProvider);
-    clearAuthError();
-  } catch (error) {
-    console.error('Google sign in error:', error);
-    showAuthError(getAuthErrorMessage(error.code));
-  }
-}
+
 
 async function signOut() {
   try {
@@ -193,8 +169,8 @@ function showMainApp(user) {
   const loading = document.getElementById('loadingScreen');
   const main = document.getElementById('mainApp');
   if (login) login.style.display = 'none';
-  if (loading) loading.style.display = 'flex';
-  if (main) main.style.display = 'none';
+  if (loading) loading.style.display = 'none';
+  if (main) main.style.display = 'flex';
   updateUserInfo(user);
   checkModelsReady();
 }
@@ -218,31 +194,7 @@ function hideDropdown() {
   dropdown && dropdown.classList.remove('show');
   userInfo && userInfo.classList.remove('active');
 }
-function showProfile() { hideDropdown(); alert('Profile feature coming soon!'); }
 function showSavedBills() { hideDropdown(); displaySavedBills(); }
-function showSettings() { hideDropdown(); openSettings(); }
-
-// ------------------ SETTINGS ------------------
-function openSettings() {
-  const modal = document.getElementById('settingsModal');
-  const ageGroup = document.getElementById('ageGroup');
-  const autoSave = document.getElementById('autoSave');
-  const detailLevel = document.getElementById('detailLevel');
-  if (ageGroup) ageGroup.value = userSettings.ageGroup || 'adult';
-  if (autoSave) autoSave.checked = !!userSettings.autoSave;
-  if (detailLevel) detailLevel.value = userSettings.detailLevel || 'detailed';
-  if (modal) modal.style.display = 'flex';
-}
-function closeSettings() { const modal = document.getElementById('settingsModal'); if (modal) modal.style.display = 'none'; }
-function saveSettings() {
-  const ageGroup = (document.getElementById('ageGroup') || {}).value || 'adult';
-  const autoSave = !!(document.getElementById('autoSave') || {}).checked;
-  const detailLevel = (document.getElementById('detailLevel') || {}).value || 'detailed';
-  userSettings = { ageGroup, autoSave, detailLevel };
-  localStorage.setItem('userSettings', JSON.stringify(userSettings));
-  closeSettings();
-  showNotification('Settings saved', 'success');
-}
 
 // ------------------ SAVED BILLS ------------------
 function saveBill(bill) {
@@ -291,54 +243,6 @@ function showNotification(message, type = 'info') {
   document.body.appendChild(notification);
   setTimeout(() => notification.classList.add('show'), 100);
   setTimeout(() => { notification.classList.remove('show'); setTimeout(() => { try { document.body.removeChild(notification); } catch (e) { } }, 300); }, 3000);
-}
-
-// ------------------ LOADING / MODELS ------------------
-function updateProgress(percent, text) {
-  const progressBar = document.getElementById('loadingProgress');
-  const loadingText = document.getElementById('loadingText');
-  if (progressBar) progressBar.style.width = `${percent}%`;
-  if (loadingText) loadingText.textContent = text;
-}
-function updateLoadingStep(stepElement, status) { if (!stepElement) return; stepElement.className = `step ${status}`; }
-
-async function checkModelsReady() {
-  const loadingScreen = document.getElementById('loadingScreen');
-  const mainApp = document.getElementById('mainApp');
-  const step1 = document.getElementById('step1');
-  const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
-
-  try {
-    updateLoadingStep(step1, 'active');
-    updateProgress(30, 'Connecting to server...');
-    await new Promise(r => setTimeout(r, 200));
-    updateProgress(60, 'Checking AI models...');
-    updateLoadingStep(step1, 'completed');
-    updateLoadingStep(step2, 'active');
-
-    const response = await fetch(`${BACKEND_URL}/models_ready`);
-    if (!response.ok) throw new Error('Models not ready');
-
-    updateProgress(85, 'Models ready!');
-    updateLoadingStep(step2, 'completed');
-    updateLoadingStep(step3, 'active');
-    await new Promise(r => setTimeout(r, 200));
-    updateProgress(100, 'Launching BillFinder AI...');
-    updateLoadingStep(step3, 'completed');
-    await new Promise(r => setTimeout(r, 300));
-
-    if (loadingScreen) loadingScreen.classList.add('fade-out');
-    setTimeout(() => {
-      if (loadingScreen) loadingScreen.style.display = 'none';
-      if (mainApp) mainApp.style.display = 'block';
-      initializeMainApp();
-    }, 300);
-  } catch (error) {
-    console.log('Server not ready, retrying...', error);
-    updateProgress(10, 'Server starting up...');
-    setTimeout(checkModelsReady, 1000);
-  }
 }
 
 // ------------------ INITIALIZE MAIN APP ------------------
@@ -492,14 +396,8 @@ function createBillCardHTML(bill, index, isSavedView = false) {
       </div>
       
       <div class="enhanced-features">
-        <button class="feature-btn complexity-btn" onclick="event.stopPropagation(); showComplexityAnalysis('${escapeHtml(bill.number)}')">
-          <i class="fas fa-chart-bar"></i> Reading Level
-        </button>
         <button class="feature-btn timeline-btn" onclick="event.stopPropagation(); showBillTimeline('${escapeHtml(bill.number)}')">
           <i class="fas fa-history"></i> Timeline
-        </button>
-        <button class="feature-btn impact-btn" onclick="event.stopPropagation(); showImpactCalculator('${escapeHtml(bill.number)}')">
-          <i class="fas fa-users"></i> Impact
         </button>
         <button class="feature-btn heatmap-btn" onclick="event.stopPropagation(); showVotingHeatmap('${escapeHtml(bill.number)}')">
           <i class="fas fa-map"></i> Voting
@@ -513,20 +411,6 @@ function createBillCardHTML(bill, index, isSavedView = false) {
       </div>
     </div>`;
 }
-
-// ------------------ CHAT ------------------
-function openBillChat(billNumber, billTitle) {
-  currentChatBill = billNumber;
-  const chatInterface = document.getElementById('chatInterface');
-  const chatBillTitle = document.getElementById('chatBillTitle');
-  const chatMessages = document.getElementById('chatMessages');
-  if (chatBillTitle) chatBillTitle.textContent = `Chat about ${billNumber}`;
-  if (chatInterface) chatInterface.style.display = 'flex';
-  if (chatMessages) chatMessages.innerHTML = `<div class="ai-message"><div class="message-avatar"><i class="fas fa-robot"></i></div><div class="message-content"><p>Hi! I'm here to help you understand <strong>${escapeHtml(billNumber)}</strong>. Ask me anything about it, or click the Quiz button for a quick knowledge test!</p></div></div>`;
-  loadBillDetails(billNumber);
-}
-
-function closeBillChat() { const chatInterface = document.getElementById('chatInterface'); if (chatInterface) chatInterface.style.display = 'none'; currentChatBill = null; }
 
 async function loadBillDetails(billNumber) {
   try {
@@ -552,139 +436,11 @@ async function loadBillDetails(billNumber) {
 
 function handleChatKeypress(event) { if (event.key === 'Enter') sendChatMessage(); }
 
-async function sendChatMessage() {
-  const chatInput = document.getElementById('chatInput');
-  const message = (chatInput || {}).value?.trim() || '';
-  if (!message || !currentChatBill) return;
-  addChatMessage(message, 'user');
-  if (chatInput) chatInput.value = '';
-  const typingId = addTypingIndicator();
-  try {
-    const response = await fetch(`${BACKEND_URL}/chat_with_bill`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bill_number: currentChatBill.replace('H.R. ', ''), message, age_group: userSettings.ageGroup })
-    });
-    if (!response.ok) throw new Error('Failed to get AI response');
-    const data = await response.json();
-    removeTypingIndicator(typingId);
-    addChatMessage(data.response || 'No answer', 'ai');
-  } catch (error) {
-    removeTypingIndicator(typingId);
-    addChatMessage('Sorry, I encountered an error. Please try again.', 'ai');
-  }
-}
-
-function addChatMessage(message, sender) {
-  const chatMessages = document.getElementById('chatMessages');
-  if (!chatMessages) return;
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `${sender}-message`;
-  if (sender === 'ai') {
-    messageDiv.innerHTML = `<div class="message-avatar"><i class="fas fa-robot"></i></div><div class="message-content"><p>${escapeHtml(message)}</p></div>`;
-  } else {
-    messageDiv.innerHTML = `<div class="message-content"><p>${escapeHtml(message)}</p></div><div class="message-avatar"><i class="fas fa-user"></i></div>`;
-  }
-  chatMessages.appendChild(messageDiv);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function addTypingIndicator() {
-  const chatMessages = document.getElementById('chatMessages');
-  if (!chatMessages) return null;
-  const typingDiv = document.createElement('div');
-  const typingId = 'typing-' + Date.now();
-  typingDiv.id = typingId;
-  typingDiv.className = 'ai-message typing';
-  typingDiv.innerHTML = `<div class="message-avatar"><i class="fas fa-robot"></i></div><div class="message-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
-  chatMessages.appendChild(typingDiv);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-  return typingId;
-}
-
-function removeTypingIndicator(typingId) { const typingDiv = document.getElementById(typingId); if (typingDiv) typingDiv.remove(); }
-
-// ------------------ QUIZ ------------------
-async function generateQuiz() {
-  if (!currentChatBill) { showNotification('Open a bill chat first to generate a quiz', 'info'); return; }
-  const quizBtn = document.getElementById('quizBtn');
-  if (quizBtn) { quizBtn.disabled = true; quizBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...'; }
-  try {
-    const response = await fetch(`${BACKEND_URL}/generate_quiz`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bill_number: currentChatBill.replace('H.R. ', ''), age_group: userSettings.ageGroup })
-    });
-    if (!response.ok) throw new Error('Failed to generate quiz');
-    const data = await response.json();
-    currentQuiz = data.quiz || [];
-    currentQuestionIndex = 0;
-    quizScore = 0;
-    if (currentQuiz.length === 0) { showNotification('No quiz available for this bill', 'info'); return; }
-    openQuizModal(); displayQuestion();
-  } catch (error) {
-    console.error('Quiz generation error:', error);
-    showNotification('Failed to generate quiz. Please try again.', 'error');
-  } finally {
-    if (quizBtn) { quizBtn.disabled = false; quizBtn.innerHTML = '<i class="fas fa-question-circle"></i> Quiz'; }
-  }
-}
-
-function openQuizModal() {
-  const modal = document.getElementById('quizModal'); const container = document.getElementById('quizContainer'); const results = document.getElementById('quizResults');
-  if (modal) modal.style.display = 'flex'; if (container) container.style.display = 'block'; if (results) results.style.display = 'none';
-}
-function closeQuiz() { const modal = document.getElementById('quizModal'); if (modal) modal.style.display = 'none'; currentQuiz = null; }
-function displayQuestion() {
-  if (!currentQuiz || currentQuestionIndex >= currentQuiz.length) return;
-  const question = currentQuiz[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / currentQuiz.length) * 100;
-  const progressBar = document.getElementById('quizProgress'); const progressText = document.getElementById('progressText');
-  const qEl = document.getElementById('quizQuestion'); const explanation = document.getElementById('quizExplanation');
-  const nextBtn = document.getElementById('nextBtn'); const finishBtn = document.getElementById('finishBtn');
-  const optionsContainer = document.getElementById('quizOptions');
-  if (progressBar) progressBar.style.width = `${progress}%`; if (progressText) progressText.textContent = `Question ${currentQuestionIndex + 1} of ${currentQuiz.length}`;
-  if (qEl) qEl.textContent = question.question || 'No question text'; if (explanation) explanation.style.display = 'none';
-  if (nextBtn) nextBtn.style.display = 'none'; if (finishBtn) finishBtn.style.display = 'none';
-  if (optionsContainer) optionsContainer.innerHTML = (question.options || []).map((option, index) => `<button class="quiz-option" onclick="selectAnswer(${index})">${escapeHtml(option)}</button>`).join('');
-}
-
-function selectAnswer(selectedIndex) {
-  if (!currentQuiz) return;
-  const question = currentQuiz[currentQuestionIndex];
-  const options = document.querySelectorAll('.quiz-option');
-  options.forEach((option, index) => { option.disabled = true; option.classList.remove('correct', 'incorrect'); if (index === question.correct) option.classList.add('correct'); else if (index === selectedIndex && index !== question.correct) option.classList.add('incorrect'); });
-  if (selectedIndex === question.correct) quizScore++;
-  const explanationDiv = document.getElementById('quizExplanation');
-  if (explanationDiv) { explanationDiv.innerHTML = `<div class="explanation-content"><h4>${selectedIndex === question.correct ? '✅ Correct!' : '❌ Incorrect'}</h4><p>${escapeHtml(question.explanation || '')}</p></div>`; explanationDiv.style.display = 'block'; }
-  if (currentQuestionIndex < currentQuiz.length - 1) { const nextBtn = document.getElementById('nextBtn'); if (nextBtn) nextBtn.style.display = 'block'; }
-  else { const finishBtn = document.getElementById('finishBtn'); if (finishBtn) finishBtn.style.display = 'block'; }
-}
-
-function nextQuestion() { currentQuestionIndex++; displayQuestion(); }
-function finishQuiz() {
-  if (!currentQuiz) return;
-  const percentage = Math.round((quizScore / currentQuiz.length) * 100);
-  const resultContainer = document.getElementById('quizContainer'); const results = document.getElementById('quizResults');
-  const scorePercentage = document.getElementById('scorePercentage'); const scoreMessage = document.getElementById('scoreMessage');
-  if (resultContainer) resultContainer.style.display = 'none'; if (results) results.style.display = 'block'; if (scorePercentage) scorePercentage.textContent = `${percentage}%`;
-  let message = '';
-  if (percentage >= 80) message = 'Excellent! You really understand this bill!';
-  else if (percentage >= 60) message = 'Good job! You have a solid grasp of the key points.';
-  else if (percentage >= 40) message = 'Not bad! Consider reviewing the bill details.';
-  else message = 'Keep learning! Try chatting with the AI to understand better.';
-  if (scoreMessage) scoreMessage.textContent = message;
-}
-function retakeQuiz() { currentQuestionIndex = 0; quizScore = 0; openQuizModal(); displayQuestion(); }
-
 // ------------------ GLOBAL EVENT HANDLERS ------------------
 document.addEventListener('click', function (event) {
   const userMenu = document.querySelector('.user-menu');
   if (userMenu && !userMenu.contains(event.target)) hideDropdown();
-  const settingsModal = document.getElementById('settingsModal');
-  const quizModal = document.getElementById('quizModal');
   if (event.target === settingsModal) closeSettings();
-  if (event.target === quizModal) closeQuiz();
 });
 
 document.addEventListener('keypress', function (e) {
@@ -697,7 +453,6 @@ document.addEventListener('keypress', function (e) {
   }
 });
 
-// ------------------ NAV STATS (fix for your previous error) ------------------
 function updateNavStats(billCount, totalFound = null) {
   const navStats = document.getElementById('navStats');
   if (!navStats) return;
@@ -708,94 +463,7 @@ function updateNavStats(billCount, totalFound = null) {
   `;
 }
 
-// ------------------ STARTUP ------------------
-document.addEventListener('DOMContentLoaded', function () {
-  showLoginScreen();
-  setTimeout(() => {
-    if (!window.firebaseAuth) {
-      console.log('Firebase not loaded, showing login screen (demo available)');
-      showLoginScreen();
-    }
-  }, 2000);
-
-  const demoBtn = document.getElementById('demoBtn'); if (demoBtn) demoBtn.onclick = demoLogin;
-});
-
 // ------------------ ENHANCED FEATURES ------------------
-
-// Complexity Analysis
-async function showComplexityAnalysis(billNumber) {
-  try {
-    const response = await fetch(`${BACKEND_URL}/analyze_complexity`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bill_number: billNumber.replace('H.R. ', '') })
-    });
-
-    if (!response.ok) throw new Error('Failed to analyze complexity');
-
-    const data = await response.json();
-    displayComplexityModal(data);
-  } catch (error) {
-    console.error('Complexity analysis error:', error);
-    showNotification('Failed to analyze reading complexity', 'error');
-  }
-}
-
-function displayComplexityModal(data) {
-  const modal = createModal('complexity-modal', 'Reading Level Analysis');
-  const complexity = data.complexity_analysis;
-  const overall = data.overall_complexity;
-
-  const content = `
-    <div class="complexity-analysis">
-      <div class="overall-score">
-        <h3>Overall Reading Level: ${overall.reading_level}</h3>
-        <div class="score-bar">
-          <div class="score-fill" style="width: ${overall.complexity_score}%; background: ${getComplexityColor(overall.complexity_score)}"></div>
-        </div>
-        <p>Complexity Score: ${overall.complexity_score}/100</p>
-      </div>
-      
-      <div class="section-analysis">
-        <h4>Section Breakdown:</h4>
-        ${Object.entries(complexity).map(([section, analysis]) => `
-          <div class="section-item">
-            <div class="section-header">
-              <span class="section-name">${section.replace('_', ' ').toUpperCase()}</span>
-              <span class="section-level ${analysis.reading_level.toLowerCase().replace(' ', '-')}">${analysis.reading_level}</span>
-            </div>
-            <div class="metrics">
-              <span>Flesch-Kincaid: ${analysis.flesch_kincaid}</span>
-              <span>Reading Ease: ${analysis.flesch_reading_ease}</span>
-              <span>Gunning Fog: ${analysis.gunning_fog}</span>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      
-      <div class="reading-guide">
-        <h4>Reading Level Guide:</h4>
-        <div class="guide-items">
-          <div class="guide-item elementary">Elementary (K-6)</div>
-          <div class="guide-item middle-school">Middle School (7-9)</div>
-          <div class="guide-item high-school">High School (10-12)</div>
-          <div class="guide-item college">College (13-16)</div>
-          <div class="guide-item graduate">Graduate (17+)</div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  modal.querySelector('.modal-body').innerHTML = content;
-  document.body.appendChild(modal);
-}
-
-function getComplexityColor(score) {
-  if (score <= 30) return '#51cf66';
-  if (score <= 60) return '#ffd43b';
-  return '#ff6b6b';
-}
 
 // Bill Timeline
 async function showBillTimeline(billNumber) {
@@ -867,93 +535,6 @@ function getStageIcon(stage) {
     6: 'signature'
   };
   return icons[stage] || 'circle';
-}
-
-// Impact Calculator
-async function showImpactCalculator(billNumber) {
-  try {
-    const response = await fetch(`${BACKEND_URL}/impact_calculator`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bill_number: billNumber.replace('H.R. ', '') })
-    });
-
-    if (!response.ok) throw new Error('Failed to calculate impact');
-
-    const data = await response.json();
-    displayImpactModal(data);
-  } catch (error) {
-    console.error('Impact calculation error:', error);
-    showNotification('Failed to calculate demographic impact', 'error');
-  }
-}
-
-function displayImpactModal(data) {
-  const modal = createModal('impact-modal', 'Demographic Impact Analysis');
-  const impact = data.demographic_impact;
-
-  const content = `
-    <div class="impact-analysis">
-      <div class="impact-header">
-        <h3>Potential Impact on Different Groups</h3>
-        <p>Analysis based on bill content and keywords</p>
-      </div>
-      
-      <div class="impact-grid">
-        ${Object.entries(impact).map(([demographic, analysis]) => `
-          <div class="impact-item ${analysis.level.toLowerCase()}">
-            <div class="impact-icon">${getDemographicIcon(demographic)}</div>
-            <div class="impact-details">
-              <h4>${demographic.replace('_', ' ').toUpperCase()}</h4>
-              <div class="impact-score">
-                <div class="score-bar">
-                  <div class="score-fill" style="width: ${analysis.score}%; background: ${getImpactColor(analysis.level)}"></div>
-                </div>
-                <span class="score-text">${analysis.level} Impact (${analysis.score}%)</span>
-              </div>
-              ${analysis.mentions.length > 0 ? `
-                <div class="mentions">
-                  <strong>Key mentions:</strong> ${analysis.mentions.slice(0, 3).join(', ')}
-                </div>
-              ` : ''}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      
-      <div class="impact-disclaimer">
-        <p><i class="fas fa-info-circle"></i> This analysis is based on keyword frequency and should be used as a starting point for deeper research.</p>
-      </div>
-    </div>
-  `;
-
-  modal.querySelector('.modal-body').innerHTML = content;
-  document.body.appendChild(modal);
-}
-
-function getDemographicIcon(demographic) {
-  const icons = {
-    seniors: '👴',
-    students: '🎓',
-    families: '👨‍👩‍👧‍👦',
-    workers: '👷',
-    veterans: '🎖️',
-    small_business: '🏪',
-    healthcare: '🏥',
-    environment: '🌱',
-    rural: '🚜',
-    urban: '🏙️'
-  };
-  return icons[demographic] || '👥';
-}
-
-function getImpactColor(level) {
-  const colors = {
-    'High': '#ff6b6b',
-    'Medium': '#ffd43b',
-    'Low': '#51cf66'
-  };
-  return colors[level] || '#a0aec0';
 }
 
 // Voting Heatmap
@@ -1041,135 +622,6 @@ function countHighSupport(votingData) {
   return Object.values(votingData).filter(vote => vote.support_percentage > 60).length;
 }
 
-// Personalized Feed
-async function getPersonalizedFeed() {
-  const userLocation = localStorage.getItem('userLocation') || '';
-  const userInterests = localStorage.getItem('userInterests') || '';
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/personalized_feed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: userLocation,
-        interests: userInterests,
-        query: 'healthcare education climate' // Default broad query
-      })
-    });
-
-    if (!response.ok) throw new Error('Failed to get personalized feed');
-
-    const data = await response.json();
-    displayPersonalizedFeed(data);
-  } catch (error) {
-    console.error('Personalized feed error:', error);
-    showNotification('Failed to load personalized feed', 'error');
-  }
-}
-
-function displayPersonalizedFeed(data) {
-  const billsContainer = document.getElementById('billsContainer');
-  if (!billsContainer) return;
-
-  const header = `
-    <div class="results-header personalized">
-      <h2><i class="fas fa-user-circle"></i> Your Personalized Feed</h2>
-      <p>📍 ${data.location || 'No location set'} • 🎯 Interests: ${data.interests || 'None specified'}</p>
-      <button class="customize-btn" onclick="showPersonalizationSettings()">
-        <i class="fas fa-cog"></i> Customize Preferences
-      </button>
-    </div>
-  `;
-
-  const billsHTML = data.personalized_bills.map((bill, index) => createBillCardHTML(bill, index, false)).join('');
-  billsContainer.innerHTML = header + `<div class="bills-grid">${billsHTML}</div>`;
-}
-
-function showPersonalizationSettings() {
-  const modal = createModal('personalization-modal', 'Customize Your Feed');
-
-  const currentLocation = localStorage.getItem('userLocation') || '';
-  const currentInterests = localStorage.getItem('userInterests') || '';
-
-  const content = `
-    <div class="personalization-form">
-      <div class="form-group">
-        <label for="userLocation">Your Location (State/City):</label>
-        <input type="text" id="userLocation" value="${currentLocation}" placeholder="e.g., California, New York City">
-        <small>Bills affecting your area will be prioritized</small>
-      </div>
-      
-      <div class="form-group">
-        <label for="userInterests">Your Interests (comma-separated):</label>
-        <input type="text" id="userInterests" value="${currentInterests}" placeholder="e.g., healthcare, education, climate change">
-        <small>Bills matching these topics will be highlighted</small>
-      </div>
-      
-      <div class="interest-suggestions">
-        <h4>Popular Topics:</h4>
-        <div class="suggestion-tags">
-          ${['healthcare', 'education', 'climate change', 'immigration', 'infrastructure', 'technology', 'veterans', 'small business'].map(topic =>
-    `<button class="suggestion-tag" onclick="addInterest('${topic}')">${topic}</button>`
-  ).join('')}
-        </div>
-      </div>
-      
-      <div class="form-actions">
-        <button class="save-preferences-btn" onclick="savePersonalizationSettings()">
-          <i class="fas fa-save"></i> Save Preferences
-        </button>
-      </div>
-    </div>
-  `;
-
-  modal.querySelector('.modal-body').innerHTML = content;
-  document.body.appendChild(modal);
-}
-
-function addInterest(interest) {
-  const interestsInput = document.getElementById('userInterests');
-  const currentInterests = interestsInput.value;
-
-  if (!currentInterests.includes(interest)) {
-    const newInterests = currentInterests ? `${currentInterests}, ${interest}` : interest;
-    interestsInput.value = newInterests;
-  }
-}
-
-function savePersonalizationSettings() {
-  const location = document.getElementById('userLocation').value.trim();
-  const interests = document.getElementById('userInterests').value.trim();
-
-  localStorage.setItem('userLocation', location);
-  localStorage.setItem('userInterests', interests);
-
-  // Save to backend if user is logged in
-  if (currentUser) {
-    saveUserProfileToBackend(currentUser.uid, location, interests);
-  }
-
-  closeModal('personalization-modal');
-  showNotification('Preferences saved! Refresh your feed to see personalized results.', 'success');
-}
-
-async function saveUserProfileToBackend(userId, location, interests) {
-  try {
-    await fetch(`${BACKEND_URL}/save_user_profile`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: userId,
-        location: location,
-        interests: interests,
-        age_group: userSettings.ageGroup || 'adult',
-        income_bracket: 'not_specified'
-      })
-    });
-  } catch (error) {
-    console.error('Error saving profile to backend:', error);
-  }
-}
-
 // Utility Functions
 function createModal(id, title) {
   // Remove existing modal if present
@@ -1218,30 +670,10 @@ function formatDate(dateStr) {
   }
 }
 
-// Add personalized feed button to navigation
-function addPersonalizedFeedButton() {
-  const navStats = document.getElementById('navStats');
-  if (navStats && !document.getElementById('personalizedFeedBtn')) {
-    const feedBtn = document.createElement('button');
-    feedBtn.id = 'personalizedFeedBtn';
-    feedBtn.className = 'personalized-feed-btn';
-    feedBtn.innerHTML = '<i class="fas fa-user-circle"></i> My Feed';
-    feedBtn.onclick = getPersonalizedFeed;
-    navStats.appendChild(feedBtn);
-  }
-}
 
 // Initialize enhanced features when main app loads
 function initializeEnhancedFeatures() {
   addPersonalizedFeedButton();
-
-  // Load user preferences if available
-  const savedLocation = localStorage.getItem('userLocation');
-  const savedInterests = localStorage.getItem('userInterests');
-
-  if (savedLocation || savedInterests) {
-    console.log('User preferences loaded:', { location: savedLocation, interests: savedInterests });
-  }
 }
 
 // Call initialization when main app is ready
@@ -1250,3 +682,4 @@ initializeMainApp = function () {
   originalInitializeMainApp();
   initializeEnhancedFeatures();
 };
+

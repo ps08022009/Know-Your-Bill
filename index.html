@@ -33,7 +33,6 @@
                 <div class="form-group">
                     <label for="signinEmail">Email</label>
                     <div class="input-wrapper">
-                        <i class="fas fa-envelope"></i>
                         <input type="email" id="signinEmail" placeholder="Enter your email" required>
                     </div>
                 </div>
@@ -41,7 +40,6 @@
                 <div class="form-group">
                     <label for="signinPassword">Password</label>
                     <div class="input-wrapper">
-                        <i class="fas fa-lock"></i>
                         <input type="password" id="signinPassword" placeholder="Enter your password" required>
                     </div>
                 </div>
@@ -51,14 +49,6 @@
                     <span>Sign In</span>
                 </button>
                 
-                <div class="divider">
-                    <span>or</span>
-                </div>
-                
-                <button class="google-btn" onclick="signInWithGoogle()">
-                    <i class="fab fa-google"></i>
-                    <span>Continue with Google</span>
-                </button>
                 
                 <div class="forgot-password">
                     <a href="#" onclick="resetPassword()">Forgot your password?</a>
@@ -103,16 +93,7 @@
                     <i class="fas fa-user-plus"></i>
                     <span>Create Account</span>
                 </button>
-                
-                <div class="divider">
-                    <span>or</span>
-                </div>
-                
-                <button class="google-btn" onclick="signInWithGoogle()">
-                    <i class="fab fa-google"></i>
-                    <span>Sign up with Google</span>
-                </button>
-            </div>
+            </div> 
             
             <div id="authError" class="auth-error"></div>
         </div>
@@ -134,35 +115,6 @@
     </div>
 </div>
 
-<!-- Loading Screen -->
-<div id="loadingScreen" class="loading-screen" style="display: none;">
-    <div class="loading-content">
-        <div class="loading-logo">
-            <i class="fas fa-gavel"></i>
-            <span>Know Your Bill</span>
-        </div>
-        <div class="loading-animation">
-            <div class="loading-bar">
-                <div class="loading-progress" id="loadingProgress"></div>
-            </div>
-            <div class="loading-text" id="loadingText">Initializing AI models...</div>
-        </div>
-        <div class="loading-steps">
-            <div class="step" id="step1">
-                <i class="fas fa-database"></i>
-                <span>Loading semantic model</span>
-            </div>
-            <div class="step" id="step2">
-                <i class="fas fa-brain"></i>
-                <span>Loading summarization model</span>
-            </div>
-            <div class="step" id="step3">
-                <i class="fas fa-rocket"></i>
-                <span>Ready to search bills</span>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- Main App -->
 <div id="mainApp" class="main-app" style="display: none;">
@@ -190,17 +142,9 @@
                 <i class="fas fa-chevron-down"></i>
             </div>
             <div class="dropdown-menu" id="dropdownMenu">
-                <a href="#" onclick="showProfile()">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
-                </a>
                 <a href="#" onclick="showSavedBills()">
                     <i class="fas fa-bookmark"></i>
                     <span>Saved Bills</span>
-                </a>
-                <a href="#" onclick="showSettings()">
-                    <i class="fas fa-cog"></i>
-                    <span>Settings</span>
                 </a>
                 <div class="dropdown-divider"></div>
                 <a href="#" onclick="signOut()">
@@ -274,77 +218,10 @@
             </div>
         </div>
         
-        <div class="search-features">
-            <div class="feature">
-                <i class="fas fa-brain"></i>
-                <span>AI-Powered Search</span>
-            </div>
-            <div class="feature">
-                <i class="fas fa-bolt"></i>
-                <span>Real-time Results</span>
-            </div>
-            <div class="feature">
-                <i class="fas fa-file-alt"></i>
-                <span>Smart Summaries</span>
-            </div>
-        </div>
-        
-        <div id="errorContainer"></div>
-    </div>
 
-    <div id="billsContainer"></div>
+    
 </div>
-
-</div>
-
-<!-- Settings Modal (will be created dynamically) -->
-
-<!-- Chat Interface -->
-<div id="chatInterface" class="modal" style="display: none;">
-    <div class="modal-content chat-modal">
-        <div class="modal-header">
-            <h2 id="chatBillTitle">Chat about Bill</h2>
-            <button class="close-btn" onclick="closeBillChat()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        
-        <div class="modal-body">
-            <div id="chatMessages" class="chat-messages">
-                <!-- Messages will be added here -->
-            </div>
-            
-            <div class="chat-input-container">
-                <input type="text" id="chatInput" placeholder="Ask me anything about this bill...">
-                <button onclick="sendChatMessage()" class="chat-send-btn">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </div>
-            
-            <button id="quizBtn" class="quiz-btn" onclick="generateQuiz()">
-                <i class="fas fa-question-circle"></i>
-                Generate Quiz
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Quiz Modal -->
-<div id="quizModal" class="modal" style="display: none;">
-    <div class="modal-content quiz-modal">
-        <div class="modal-header">
-            <h2><i class="fas fa-question-circle"></i> Bill Knowledge Quiz</h2>
-            <button class="close-btn" id="quizClose">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        
-        <div class="modal-body">
-            <div id="quizContent">
-                <!-- Quiz content will be added here -->
-            </div>
-        </div>
-    </div>
+<div id="billsContainer"></div>
 </div>
 
 <script src="script.js"></script>

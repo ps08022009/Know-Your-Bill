@@ -208,9 +208,7 @@ body {
 }
 
 .hero-section {
-    padding: 80px 20px 60px;
-    text-align: center;
-    max-width: 1200px;
+    display: block;
     margin: 0 auto;
 }
 
@@ -224,6 +222,7 @@ body {
     font-weight: 800;
     line-height: 1.1;
     margin-bottom: 24px;
+    margin-top: 40px;
     color: white;
 }
 
@@ -244,13 +243,9 @@ body {
 }
 
 .search-container {
-    max-width: 1200px;
-    width: 100%;
+    display: block;
     margin: 0 auto;
-    padding: 0 20px 40px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    padding: 0 20px 20px;
 }
 
 .search-box {
@@ -259,9 +254,9 @@ body {
     border-radius: 24px;
     padding: 40px;
     box-shadow: var(--shadow-xl);
-    margin-bottom: 40px;
+    margin: 40px;
     width: 100%;
-    max-width: 900px;
+    min-width: 900px;
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
@@ -3771,4 +3766,53 @@ at Interface Styles */
 
 .bill-card:hover {
     transform: translateY(-4px);
+}
+
+.login-features,
+.category-grid,
+.search-features {
+    display: flex;
+    flex-direction: column; 
+    gap: 10px; 
+}
+
+.category-btn, .feature-item {
+    width: 100%; 
+}
+.navbar {
+    position: fixed; 
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000; 
+}
+
+.main-app {
+    margin-top: 70px; 
+}
+
+#billsContainer {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    display: span;
+    flex-direction: column; /* stack vertically */
+    gap: 16px; /* space between bills */
+}
+.bill-card {
+    width: 100%;
+}
+
+#mainApp {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hero-section, .search-container, #billsContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
 }
