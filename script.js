@@ -561,6 +561,9 @@ function displayHeatmapModal(data) {
   const votingData = data.voting_data;
 
   const content = `
+      <div class="heatmap-disclaimer">
+        <p><i class="fas fa-info-circle"></i> This is sample data for demonstration. Real implementation would use actual congressional voting records.</p>
+      </div>
     <div class="voting-heatmap">
       <div class="heatmap-header">
         <h3>State-by-State Support</h3>
@@ -582,6 +585,7 @@ function displayHeatmapModal(data) {
         `).join('')}
       </div>
       
+    </div>
       <div class="voting-summary">
         <div class="summary-stats">
           <div class="stat-item">
@@ -595,10 +599,6 @@ function displayHeatmapModal(data) {
         </div>
       </div>
       
-      <div class="heatmap-disclaimer">
-        <p><i class="fas fa-info-circle"></i> This is sample data for demonstration. Real implementation would use actual congressional voting records.</p>
-      </div>
-    </div>
   `;
 
   modal.querySelector('.modal-body').innerHTML = content;
